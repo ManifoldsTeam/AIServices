@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@ai-devkit/memory": "^0.3.0"
+  }
+}
