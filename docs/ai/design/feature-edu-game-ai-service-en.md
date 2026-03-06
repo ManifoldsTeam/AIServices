@@ -1,3 +1,4 @@
+````markdown
 ---
 phase: design
 title: System Design & Architecture
@@ -10,19 +11,20 @@ description: Define the technical architecture, components, and data models
 
 **What is the high-level system structure?**
 
-Kiến trúc 100% GCP Managed Services. **LangGraph** là core duy nhất cho business logic. **Vertex AI Search** thay thế hoàn toàn RAG pipeline. Hệ thống hỗ trợ **hai nguồn tài liệu**: system docs (Admin quản lý, luôn có sẵn) + user docs (cá nhân, optional). User có thể sinh game ngay mà không cần upload.
+Architecture uses 100% GCP Managed Services. **LangGraph** is the sole core for business logic. **Vertex AI Search** completely replaces RAG pipeline. The system supports **two document sources**: system docs (Admin managed, always available) + user docs (personal, optional). Users can generate games immediately without uploading.
 
-### Kiến trúc tổng quan
+**AI Service is an internal microservice** — it does not receive requests directly from end-users. All requests come from **Upstream Service** (which has already authenticated the user). Generation requests run **async-first** via Cloud Tasks.
+
+### High-Level Architecture
 
 ```mermaid
 graph TD
-    Admin[Admin] -->|Upload system docs| CloudRun
-    User[User / Game Client] -->|REST API| CloudRun[Cloud Run<br/>FastAPI + LangGraph]
+    Upstream[Upstream Service<br/>User Auth + Routing] -->|"REST API (Cloud Run IAM)"| CloudRun[Cloud Run<br/>FastAPI + LangGraph]
 
     subgraph "GCP Managed Services"
         GCS[(Cloud Storage<br/>system/ + user/user_id/)] -->|Auto-import| VAIS[Vertex AI Search<br/>Data Store + Metadata Filter]
-        Firestore[(Firestore<br/>JSON Output + Metadata)]
-        SecretMgr[Secret Manager]
+        Firestore[(Firestore<br/>Jobs + Results + Metadata)]
+        CloudTasks[Cloud Tasks<br/>Async Job Dispatch]
     end
 
     subgraph "LangGraph Graph — Cloud Run"
@@ -38,30 +40,36 @@ graph TD
         Formatter -->|Save| Firestore
     end
 
-    CloudRun --> Supervisor
+    CloudRun -->|Enqueue job| CloudTasks
+    CloudTasks -->|Trigger| Supervisor
     ContentAgent -.->|Query docs<br/>system + user scoped| VAIS
-    Formatter -->|JSON Response| User
+    Upstream -->|"Poll GET /generations/{id}"| CloudRun
 ```
+````
 
-### Thiết kế core
+### Core Design
 
-#### 1. LangGraph là trung tâm
+#### 1. LangGraph as the Center
 
-Mọi business logic đều nằm trong LangGraph StateGraph:
+All business logic resides in LangGraph StateGraph:
 
-- **Routing logic** = Supervisor node + conditional edges
-- **Domain logic** = Specialized agent nodes (Content Agent cho MVP, thêm Story/Visual Agent sau)
+- **Routing logic** = Supervisor node + conditional edges (routes to specialized agent based on content type)
+- **Domain logic** = Specialized agent nodes:
+  - **Math Agent** (Phase 1): Code Execution for calculations
+  - **Story Agent** (Phase 2): GraphRAG for narrative/timeline
+  - **Visual Agent** (Phase 3): Multimodal Vision for images
+  - **Structure Agent** (Phase 4): Table extraction for structured data
 - **Quality control** = Reviewer node + feedback loop edges
 - **Output formatting** = Formatter node + Game Template system
 - **State management** = LangGraph checkpoint (Firestore)
 
-Mở rộng = thêm node + edge vào graph, không thay đổi core structure.
+Extension = add node + edge to graph, don't change core structure. Each specialized agent is a separate node.
 
 #### 2. Dual Document Sources
 
-Hệ thống hỗ trợ hai nguồn tài liệu:
+The system supports two document sources:
 
-| Nguồn           | GCS prefix        | Ai quản lý | Metadata `user_id` |
+| Source          | GCS prefix        | Managed By | Metadata `user_id` |
 | --------------- | ----------------- | ---------- | ------------------ |
 | **System docs** | `system/`         | Admin      | `"__system__"`     |
 | **User docs**   | `user/{user_id}/` | User       | `"{user_id}"`      |
@@ -72,19 +80,19 @@ gs://edu-game-docs-{project_id}/
 ├── system/                              # Admin-managed shared docs
 │   ├── 2026-03-01/
 │   │   └── {session_1}/
-│   │       ├── sgk-toan-11.pdf
-│   │       └── sgk-ly-12.pdf
+│   │       ├── math-11-textbook.pdf
+│   │       └── physics-12-textbook.pdf
 │   └── 2026-03-03/
 │       └── {session_2}/
-│           └── sgk-hoa-10.pdf
+│           └── chemistry-10-textbook.pdf
 ├── user/                                # User personal docs
 │   ├── {user_id}/
 │   │   ├── 2026-03-03/
 │   │   │   ├── {session_1}/
-│   │   │   │   ├── giao-an-toan-11.pdf
-│   │   │   │   └── slide-dao-ham.pptx
+│   │   │   │   ├── math-11-lesson-plan.pdf
+│   │   │   │   └── derivatives-slides.pptx
 │   │   │   └── {session_2}/
-│   │   │       └── giao-trinh-ly.docx
+│   │   │       └── physics-curriculum.docx
 │   │   └── 2026-03-04/
 │   │       └── ...
 ```
@@ -94,35 +102,38 @@ gs://edu-game-docs-{project_id}/
 - **Query scoping (doc_scope):**
   - `"user"` → filter `user_id: ANY("{user_id}")`
   - `"system"` → filter `user_id: ANY("__system__")`
-  - `"all"` (default) → filter `user_id: ANY("{user_id}", "__system__")` + **post-retrieval re-ranking: user docs xếp trước, system docs bổ sung** (user-first)
-- → User A không thể truy cập tài liệu User B. User A có thể truy cập system docs.
+  - `"all"` (default) → filter `user_id: ANY("{user_id}", "__system__")` + **post-retrieval re-ranking: user docs ranked first, system docs supplement** (user-first)
+- → User A cannot access User B's documents. User A can access system docs.
 
 #### 3. Flexible Game Template System
 
 ```
-Content Agent sinh → Educational Content Items (generic Q&A)
-                        ↓
-Formatter nhận game_types[] → áp dụng Game Templates → output per type
+Content Agent generates → Educational Content Items (generic Q&A)
+                            ↓
+Formatter receives game_types[] → applies Game Templates → output per type
 ```
 
-Tất cả game types dựa trên Q&A foundation:
+All game types are based on Q&A foundation:
 
 - **Content Items:** `{ question, answer, explanation, topic, difficulty, context_source }`
-- **Game Template:** Pydantic schema + formatter prompt → transform content items → game-specific JSON
-- Thêm game type = thêm 1 Pydantic model + 1 formatter prompt. Không sửa graph.
+- **Game Template:** Pydantic schema + formatter prompt → transforms content items → game-specific JSON
+- Adding game type = add 1 Pydantic model + 1 formatter prompt. No graph changes.
 
 ### Key Components
 
-| Component              | Responsibility                                                                     | Model/Tech                                       |
-| ---------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **FastAPI Gateway**    | REST API, input validation, response                                               | FastAPI trên Cloud Run                           |
-| **Supervisor Node**    | Phân tích request → routing sang agent phù hợp                                     | Gemini Pro                                       |
-| **Content Agent Node** | Query Vertex AI Search (scoped by doc_scope) → sinh content items → Code Execution | Gemini Pro + Code Exec + VertexAISearchRetriever |
-| **Reviewer Node**      | Kiểm tra chất lượng, grounding, accuracy                                           | Gemini Flash                                     |
-| **Formatter Node**     | Transform content items → game-specific JSON via templates                         | Gemini Flash + Structured Output                 |
-| **Vertex AI Search**   | Document indexing + semantic retrieval + metadata filtering                        | Discovery Engine Data Store                      |
-| **Firestore**          | Lưu JSON output, metadata, generations, user info                                  | Firestore Native Mode                            |
-| **Cloud Storage**      | User document storage (`user/{user_id}/`) + system docs (`system/`)                | GCS                                              |
+| Component                | Responsibility                                                                        | Model/Tech                                       |
+| ------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **FastAPI Gateway**      | REST API, input validation, Cloud Run IAM auth, async job dispatch                    | FastAPI on Cloud Run                             |
+| **Supervisor Node**      | Analyze request → classify content type → route to appropriate specialized agent      | Gemini Pro                                       |
+| **Math Agent Node**      | Query Vertex AI Search + generate math content → Code Execution for calculations      | Gemini Pro + Code Exec + VertexAISearchRetriever |
+| **Story Agent Node**     | Query Vertex AI Search + generate narrative content → GraphRAG for timeline/causality | Gemini Pro + GraphRAG (Phase 2)                  |
+| **Visual Agent Node**    | Query Vertex AI Search + process images → Multimodal Vision for spatial analysis      | Gemini Pro Multimodal (Phase 3)                  |
+| **Structure Agent Node** | Query Vertex AI Search + extract tables → Pattern matching for structured data        | Gemini Pro + Table Parser (Phase 4)              |
+| **Reviewer Node**        | Check quality, grounding, accuracy                                                    | Gemini Flash                                     |
+| **Formatter Node**       | Transform content items → game-specific JSON via templates                            | Gemini Flash + Structured Output                 |
+| **Vertex AI Search**     | Document indexing + semantic retrieval + metadata filtering                           | Discovery Engine Data Store                      |
+| **Firestore**            | Store JSON output, metadata, generations, user info                                   | Firestore Native Mode                            |
+| **Cloud Storage**        | User document storage (`user/{user_id}/`) + system docs (`system/`)                   | GCS                                              |
 
 ### Technology Stack
 
@@ -138,7 +149,8 @@ Tất cả game types dựa trên Q&A foundation:
 | Database       | Firestore                                              | Serverless, JSON-native, zero ops                                       |
 | Object Storage | Cloud Storage                                          | Document upload: `system/` + `user/{user_id}/` folder isolation         |
 | Deployment     | Cloud Run                                              | Serverless, auto-scale 0→N                                              |
-| Secrets        | Secret Manager                                         | API keys, service account                                               |
+| Async Jobs     | Cloud Tasks                                            | Reliable async dispatch, retry, dead-letter queue                       |
+| Secrets        | Secret Manager                                         | Service configuration                                                   |
 | Monitoring     | Cloud Logging + Cloud Trace                            | Structured logs, request tracing                                        |
 
 ## Data Models
@@ -334,7 +346,7 @@ flowchart LR
     VAIS -->|"Retriever (filter: doc_scope)"| Agent[LangGraph<br/>Content Agent]
     Agent -->|Content Items| Formatter[Formatter<br/>Game Templates]
     Formatter -->|Game JSON| Firestore[(Firestore)]
-    Firestore -->|API Response| Client[User / Game Client]
+    Firestore -->|Poll status| Upstream[Upstream Service]
 ```
 
 ## API Design
@@ -361,8 +373,8 @@ Response: {
 
 #### POST /api/v1/admin/documents/upload
 
-Admin upload system document → GCS `system/` → AI Search Data Store import.
-Requires `X-Admin-Key` header.
+Admin uploads system document → GCS `system/` → AI Search Data Store import.
+Upstream calls with admin context (Cloud Run IAM).
 
 ```
 Request: multipart/form-data {
@@ -378,7 +390,7 @@ Response: {
 
 #### GET /api/v1/admin/documents
 
-List all system documents. Requires `X-Admin-Key`.
+List all system documents. Upstream calls with admin context.
 
 ```
 Response: { documents: DocumentRecord[], total: int }
@@ -386,7 +398,7 @@ Response: { documents: DocumentRecord[], total: int }
 
 #### DELETE /api/v1/admin/documents/{document_id}
 
-Delete a system document. Requires `X-Admin-Key`.
+Delete a system document. Upstream calls with admin context.
 
 ```
 Response: { deleted: true }
@@ -410,19 +422,24 @@ Response: { documents: DocumentRecord[], total: int }
 
 #### POST /api/v1/generate
 
-Sinh nội dung game. Core endpoint. `doc_scope` quyết định nguồn tài liệu.
+Generate game content (async). Returns `request_id` immediately, processes in background via Cloud Tasks.
 
 ```
-Request: GenerationRequest (JSON) — includes doc_scope: "user" | "system" | "all"
-Response: GameContentResponse (JSON)
+Request: GenerationRequest (JSON) — includes user_id, doc_scope, topic, game_types...
+Response: 202 { request_id, status: "processing", created_at }
 ```
 
 #### GET /api/v1/generations/{request_id}
 
-Lấy kết quả generation đã lưu.
+Get generation status and results.
 
 ```
-Response: GameContentResponse (JSON)
+Response: {
+  request_id, status: "processing" | "completed" | "failed",
+  content: GameContentResponse | null,
+  error: string | null,
+  created_at, completed_at
+}
 ```
 
 #### GET /api/v1/game-types
@@ -433,18 +450,23 @@ List available game types + their schemas.
 Response: { game_types: [{ type, description, schema_example }] }
 ```
 
-### Authentication
+### Authentication (Service-to-service)
 
-- MVP: API Key qua header `X-API-Key` + `X-User-Id` header
-- Admin endpoints: `X-Admin-Key` header (separate key, stored in Secret Manager)
-- Future: OAuth2/JWT khi multi-tenancy
+AI Service is an **internal service** — it only receives requests from Upstream Service that has already authenticated users.
 
-### Internal: LangGraph ↔ GCP Services
+- **Cloud Run IAM:** Upstream service account is granted `roles/run.invoker` → only upstream can call
+- **Trusted `user_id`:** Upstream passes `user_id` in request body (already verified user at upstream)
+- **Admin operations:** Upstream calls with `scope: "system"` — upstream has already authorized admin
+- No API Key, no `X-User-Id` header, no `X-Admin-Key`
 
-- **LangGraph → Vertex AI Search:** qua `VertexAISearchRetriever` + metadata filter (doc_scope-aware)
-- **LangGraph → Gemini:** qua `ChatVertexAI` (langchain-google-vertexai)
-- **LangGraph → Firestore:** qua `google-cloud-firestore` SDK
-- **LangGraph Checkpoint:** Firestore hoặc custom async checkpointer
+### Internal: API ↔ Cloud Tasks ↔ LangGraph ↔ GCP Services
+
+- **API → Cloud Tasks:** Dispatch generation job via `google-cloud-tasks` SDK
+- **Cloud Tasks → LangGraph:** Trigger execution endpoint on Cloud Run
+- **LangGraph → Vertex AI Search:** via `VertexAISearchRetriever` + metadata filter (doc_scope-aware)
+- **LangGraph → Gemini:** via `ChatVertexAI` (langchain-google-vertexai)
+- **LangGraph → Firestore:** via `google-cloud-firestore` SDK
+- **LangGraph Checkpoint:** Firestore or custom async checkpointer
 
 ## Component Breakdown
 
@@ -464,13 +486,16 @@ src/
 │   │   ├── requests.py
 │   │   ├── responses.py
 │   │   └── game_content.py     # All game type schemas
-│   └── deps.py                 # API key auth, admin key auth, user_id extraction
+│   └── deps.py                 # Cloud Run IAM verification, user_id extraction from body
 ├── graph/                      # LangGraph — ALL business logic
 │   ├── builder.py              # StateGraph definition & compile
 │   ├── state.py                # AgentState TypedDict
 │   └── nodes/
-│       ├── supervisor.py       # Routing logic
-│       ├── content_agent.py    # Query AI Search + generate content items + Code Exec
+│       ├── supervisor.py       # Routing logic (classify content type → route to specialist)
+│       ├── math_agent.py       # Phase 1: Math/Physics/Chem + Code Execution
+│       ├── story_agent.py      # Phase 2: History/Literature + GraphRAG
+│       ├── visual_agent.py     # Phase 3: Geography/Biology + Multimodal Vision
+│       ├── structure_agent.py  # Phase 4: Grammar/Tables + Table Extraction
 │       ├── reviewer.py         # Quality check (Gemini Flash)
 │       └── formatter.py        # Game template transform (Pydantic structured output)
 ├── templates/                  # Game type templates
@@ -482,7 +507,8 @@ src/
 │   ├── vertex_search.py        # VertexAISearchRetriever factory + doc_scope filter + user-first re-ranking
 │   ├── llm.py                  # ChatVertexAI Pro/Flash factory
 │   ├── document_store.py       # GCS upload (system/ + user/{user_id}/) + AI Search import
-│   └── firestore.py            # Firestore CRUD
+│   ├── firestore.py            # Firestore CRUD
+│   └── task_queue.py           # Cloud Tasks dispatch for async generation
 ├── config/
 │   └── settings.py             # Pydantic BaseSettings
 └── main.py                     # FastAPI app init
@@ -500,51 +526,58 @@ src/
 
 **Why did we choose this approach?**
 
-### DD-1: Vertex AI Search thay RAG pipeline tự build
+### DD-1: Vertex AI Search replaces self-built RAG pipeline
 
-- **Quyết định:** Vertex AI Search (Discovery Engine) Data Store làm knowledge retrieval.
-- **Lý do:** Zero code indexing/chunking/embedding. Upload docs → auto-index → query qua `VertexAISearchRetriever`. Team không có infra → managed service.
-- **Trade-off:** Phụ thuộc GCP pricing. Ít control hơn custom RAG. Nhưng cho MVP, tốc độ >> customization.
+- **Decision:** Vertex AI Search (Discovery Engine) Data Store for knowledge retrieval.
+- **Rationale:** Zero code indexing/chunking/embedding. Upload docs → auto-index → query via `VertexAISearchRetriever`. Team has no infra → managed service.
+- **Trade-off:** Depends on GCP pricing. Less control than custom RAG. But for Phase 1, speed >> customization.
 
-### DD-2: LangGraph là core logic duy nhất
+### DD-2: LangGraph as sole core logic with 4-Pillar Strategy
 
-- **Quyết định:** Mọi business logic nằm trong LangGraph StateGraph.
-- **Lý do:** Extensible — thêm agent = thêm node. Feedback loop = conditional edge. Checkpoint = state persistence.
-- **Trade-off:** Learning curve LangGraph, nhưng investment xứng đáng cho multi-agent roadmap.
+- **Decision:** All business logic resides in LangGraph StateGraph. Specialized agents per content type (Math, Story, Visual, Structure).
+- **Rationale:** Each data type has unique challenges (LLM calculates incorrectly for math, loses context for history, can't read images, breaks tables). Specialized agents handle each pillar optimally. Extensible — adding agent = adding node.
+- **Trade-off:** LangGraph learning curve + more complex routing, but investment worthwhile for quality and multi-agent roadmap.
 
-### DD-3: Firestore thay PostgreSQL cho MVP
+### DD-3: Firestore replaces PostgreSQL for Phase 1
 
-- **Quyết định:** Firestore Native Mode cho database.
-- **Lý do:** Serverless, JSON-native, free tier generous. Cloud SQL cần provisioning.
-- **Trade-off:** Không có SQL query. Nhưng MVP chỉ cần key-value CRUD cho JSON content.
+- **Decision:** Firestore Native Mode for database.
+- **Rationale:** Serverless, JSON-native, generous free tier. Cloud SQL requires provisioning.
+- **Trade-off:** No SQL queries. But initial phases only need key-value CRUD for JSON content.
 
-### DD-4: Gemini Flash cho Reviewer & Formatter
+### DD-4: Gemini Flash for Reviewer & Formatter
 
-- **Quyết định:** Gemini Flash cho review + formatting. Pro chỉ cho Supervisor + Content Agent.
-- **Lý do:** Reviewer check logic đơn giản. Formatter chỉ reformat. Tiết kiệm 90%+ cost.
+- **Decision:** Gemini Flash for review + formatting. Pro only for Supervisor + Content Agent.
+- **Rationale:** Reviewer checks simple logic. Formatter only reformats. Saves 90%+ cost.
 
-### DD-5: GCS folder structure cho document isolation
+### DD-5: GCS folder structure for document isolation
 
-- **Quyết định:** `system/{YYYY-MM-DD}/{session_id}/` cho admin docs, `user/{user_id}/{YYYY-MM-DD}/{session_id}/` cho user docs.
-- **Lý do:** Cùng bucket, cùng Data Store. GCS path rõ ràng (`system/` vs `user/`). Phân biệt qua metadata `user_id` trong AI Search (`__system__` vs real user_id).
-- **Trade-off:** Cần đảm bảo metadata filter hoạt động chính xác với `ANY()` filter cho multi-value. Validate qua PoC.
+- **Decision:** `system/{YYYY-MM-DD}/{session_id}/` for admin docs, `user/{user_id}/{YYYY-MM-DD}/{session_id}/` for user docs.
+- **Rationale:** Same bucket, same Data Store. Clear GCS paths (`system/` vs `user/`). Differentiation via `user_id` metadata in AI Search (`__system__` vs real user_id).
+- **Trade-off:** Must ensure metadata filter works correctly with `ANY()` filter for multi-value. Validate via PoC.
 
-### DD-6: Game Template system thay hardcoded game types
+### DD-6: Game Template system replaces hardcoded game types
 
-- **Quyết định:** Content Agent sinh generic content items → Formatter transform via game templates.
-- **Lý do:** Extensible. Thêm game type = thêm schema + prompt. Không thay đổi LangGraph graph, không thay đổi Content Agent logic.
-- **Trade-off:** Extra abstraction layer. Nhưng payoff lớn khi roadmap có 7+ game types.
+- **Decision:** Content Agent generates generic content items → Formatter transforms via game templates.
+- **Rationale:** Extensible. Adding game type = adding schema + prompt. No changes to LangGraph graph, no changes to Content Agent logic.
+- **Trade-off:** Extra abstraction layer. But big payoff when roadmap has 7+ game types.
 
-### DD-7: Sync API → Async future
+### DD-7: Async-first lifecycle
 
-- **Quyết định:** Sync request-response cho MVP.
-- **Lý do:** Simple. 10 câu < 60s chấp nhận được. Future: Cloud Tasks/Pub-Sub cho async batch.
+- **Decision:** All generation requests are async via Cloud Tasks + polling.
+- **Rationale:** AI Service is an internal service in the middle of the pipeline (Upstream → AI → Game Service). Generation processing takes time (AI Search + LLM + review loop). Sync causes timeout, blocks upstream resources. Async-first is simpler than hybrid.
+- **Trade-off:** Upstream needs to implement polling logic. But since it's service-to-service, polling is a natural pattern.
 
 ### DD-8: Dual document sources (system + user)
 
-- **Quyết định:** System docs (Admin) + User docs (cá nhân) cùng tồn tại trong 1 Data Store. `doc_scope` param quyết định nguồn query. `doc_scope="all"` dùng **user-first**: query cả hai nguồn, post-retrieval re-ranking với user docs xếp trước.
-- **Lý do:** Hệ thống cần có data sẵn trước khi user upload. Admin cung cấp SGK/giáo trình chuẩn. User có thể sinh game ngay không cần upload. Nếu user có docs riêng, ưu tiên docs đó.
-- **Trade-off:** Cùng Data Store → metadata filter phải chính xác. Re-ranking thêm 1 bước post-processing nhưng đảm bảo user-first. Admin key riêng với user API key.
+- **Decision:** System docs (Admin) + User docs (personal) coexist in 1 Data Store. `doc_scope` param determines query source. `doc_scope="all"` uses **user-first**: query both sources, post-retrieval re-ranking with user docs ranked first.
+- **Rationale:** System needs to have data ready before users upload. Admin provides textbooks/standard curricula. Users can generate games immediately without uploading. If users have their own docs, prioritize those.
+- **Trade-off:** Same Data Store → metadata filter must be accurate. Re-ranking adds 1 post-processing step but ensures user-first.
+
+### DD-9: Service-to-service auth (Cloud Run IAM)
+
+- **Decision:** Use Cloud Run IAM for service-to-service auth. `user_id` is a trusted value from upstream.
+- **Rationale:** AI Service is an internal microservice, only receives requests from upstream service that has already authenticated users. No need to build auth layer (API Key, JWT). Cloud Run IAM = zero code, native GCP.
+- **Trade-off:** Depends on upstream service for user auth. If AI Service needs to expose public → upgrade to Firebase Auth (Option A in Risk doc).
 
 ## Non-Functional Requirements
 
@@ -552,10 +585,10 @@ src/
 
 ### Performance
 
-- 10 câu < 60s, 50 câu < 5 phút
+- 10 questions < 60s, 50 questions < 5 minutes
 - Concurrent: ≥ 10 requests (Cloud Run auto-scale)
 - Vertex AI Search query: < 2s
-- Document indexing: < 15 phút cho 50MB file
+- Document indexing: < 15 minutes for 50MB file
 
 ### Scalability
 
@@ -567,9 +600,10 @@ src/
 
 ### Security
 
-- API Key auth (Secret Manager) + user_id scoping + admin key for system docs
+- **Service-to-service auth:** Cloud Run IAM — only upstream service (with `roles/run.invoker`) can call AI Service
+- **Trusted `user_id`:** Upstream has verified user → `user_id` in request body is trustworthy. AI Service uses directly to scope data
 - Document isolation: user_id metadata filtering in AI Search. System docs accessible to all users.
-- **Privacy:** User docs riêng tư (scoped). System docs chung. Consent policy khi upload (xem Requirements → Privacy & Data Consent).
+- **Privacy:** User docs are private (scoped). System docs are shared. Consent policy on upload (see Requirements → Privacy & Data Consent).
 - File upload: 50MB limit, PDF/DOCX/PPTX only (magic bytes check)
 - GCS: uniform bucket-level access
 - Cloud Run: IAM-controlled invocation
@@ -578,7 +612,7 @@ src/
 ### Reliability
 
 - LangGraph checkpoint: resume from last node on crash
-- Retry logic: exponential backoff cho Gemini/AI Search API calls
+- Retry logic: exponential backoff for Gemini/AI Search API calls
 - Max 3 feedback loop iterations (prevent infinite loop)
 - Cloud Run SLA: 99.95%
 
@@ -589,3 +623,7 @@ src/
 - Metrics: generation latency, success rate, token usage, AI Search queries, cost/request
 - Per-user metrics: documents uploaded, generations count
 - Alert: error rate > 5%, p95 latency > 120s
+
+```
+
+```

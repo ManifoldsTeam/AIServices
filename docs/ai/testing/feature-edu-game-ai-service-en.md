@@ -1,3 +1,4 @@
+```markdown
 ---
 phase: testing
 title: Testing Strategy
@@ -30,7 +31,7 @@ description: Define testing approach, test cases, and quality assurance
 
 ### Game Templates (templates/)
 
-- [ ] GAME_TEMPLATES registry: all MVP types registered
+- [ ] GAME_TEMPLATES registry: all Phase 1 types registered
 - [ ] Quiz template: content items → QuizQuestion conversion
 - [ ] Flashcard template: content items → Flashcard conversion
 - [ ] Fill-blank template: content items → FillBlankQuestion conversion
@@ -48,7 +49,7 @@ description: Define testing approach, test cases, and quality assurance
 - [ ] Returns configured VertexAISearchRetriever with user_id filter (doc_scope="user")
 - [ ] Returns configured VertexAISearchRetriever with `__system__` filter (doc_scope="system")
 - [ ] Returns combined filter `ANY(user_id, __system__)` (doc_scope="all")
-- [ ] User-first re-ranking: doc_scope="all" → user docs xếp trước system docs
+- [ ] User-first re-ranking: doc_scope="all" → user docs ranked before system docs
 - [ ] Handles empty results gracefully
 - [ ] Respects max_documents config
 - [ ] Default doc_scope is "all"
@@ -68,15 +69,15 @@ description: Define testing approach, test cases, and quality assurance
 
 - [ ] Receives request and extracts routing info
 - [ ] Determines doc_scope from request (default: "all")
-- [ ] Routes to content_agent (MVP: single path)
+- [ ] Routes to math_agent (Phase 1: Math/Physics/Chemistry)
 - [ ] Passes user_id, topic, game_types, doc_scope to state
 
-### Content Agent Node (graph/nodes/content_agent.py)
+### Math Agent Node (graph/nodes/math_agent.py)
 
 - [ ] Queries VertexAISearchRetriever with doc_scope filter
 - [ ] doc_scope="user" → only user docs queried
 - [ ] doc_scope="system" → only system docs queried
-- [ ] doc_scope="all" → both user + system docs queried, user docs xuất hiện trước
+- [ ] doc_scope="all" → both user + system docs queried, user docs appear first
 - [ ] Generates content items (generic Q&A format)
 - [ ] Uses Code Execution for math/physics/chemistry computation
 - [ ] Handles difficulty levels
@@ -103,8 +104,8 @@ description: Define testing approach, test cases, and quality assurance
 
 **How do we test component interactions?**
 
-- [ ] **Full LangGraph pipeline:** Supervisor → Content Agent → Reviewer → Formatter (with real Vertex AI)
-- [ ] **Feedback loop:** Reviewer rejects → Supervisor → Content Agent retries → Reviewer passes
+- [ ] **Full LangGraph pipeline:** Supervisor → Math Agent → Reviewer → Formatter (with real Vertex AI)
+- [ ] **Feedback loop:** Reviewer rejects → Supervisor → Math Agent retries → Reviewer passes
 - [ ] **Max retry:** After 3 iterations, returns partial results gracefully
 - [ ] **Multi game type:** Request Quiz + Flashcard → both types in response
 - [ ] **User scoping:** User A documents → query returns only User A content (not User B)
@@ -112,7 +113,7 @@ description: Define testing approach, test cases, and quality assurance
 - [ ] **Admin upload E2E:** POST /api/v1/admin/documents/upload → GCS `system/` + Firestore + AI Search
 - [ ] **Admin list:** GET /api/v1/admin/documents → returns system docs list
 - [ ] **Admin delete:** DELETE /api/v1/admin/documents/{document_id} → removes system doc
-- [ ] **Admin auth:** Admin endpoints require X-Admin-Key, reject with 403 otherwise
+- [ ] **Service auth:** Cloud Run IAM — only upstream service can call AI Service, unauthorized caller → 403
 - [ ] **API E2E:** POST /api/v1/generate → valid GameContentResponse
 - [ ] **Generate with doc_scope:** doc_scope="user" / "system" / "all" → correct scoping
 - [ ] **User-first verification:** doc_scope="all" → response content prioritizes user docs over system docs
@@ -125,23 +126,23 @@ description: Define testing approach, test cases, and quality assurance
 
 **What user flows need validation?**
 
-- [ ] Happy path: Upload giáo án PDF → Generate 10 Quiz → All pass review → Valid JSON
-- [ ] **No-upload path:** User chưa upload gì + doc_scope="system" → Generate Quiz từ system docs → Valid JSON
-- [ ] **No-upload default:** User chưa upload + doc_scope="all" → fallback to system docs → success
-- [ ] **Admin upload:** Admin upload SGK → system doc indexed → all users can generate from it
-- [ ] DOCX flow: Upload giáo trình DOCX → Generate Flashcards → Valid
-- [ ] PPTX flow: Upload slide PPTX → Generate Fill-blank → Valid
+- [ ] Happy path: Upload lesson plan PDF → Generate 10 Quiz → All pass review → Valid JSON
+- [ ] **No-upload path:** User hasn't uploaded anything + doc_scope="system" → Generate Quiz from system docs → Valid JSON
+- [ ] **No-upload default:** User hasn't uploaded + doc_scope="all" → fallback to system docs → success
+- [ ] **Admin upload:** Admin uploads textbook → system doc indexed → all users can generate from it
+- [ ] DOCX flow: Upload course material DOCX → Generate Flashcards → Valid
+- [ ] PPTX flow: Upload lecture slides PPTX → Generate Fill-blank → Valid
 - [ ] Mixed types: Request Quiz + Flashcard + Fill-blank → All 3 types present
 - [ ] Difficulty: Request easy/medium/hard → Content reflects difficulty
 - [ ] Large document: 200-page PDF → Success (no timeout)
 - [ ] Multi-user isolation: User A upload → User B doc_scope="user" cannot query → empty
 - [ ] System docs shared: User A + User B both can query doc_scope="system" or "all"
-- [ ] **User-first E2E:** Upload cả user doc + system doc → doc_scope="all" → user doc content xuất hiện trước trong kết quả
+- [ ] **User-first E2E:** Upload both user doc + system doc → doc_scope="all" → user doc content appears first in results
 - [ ] Error: Upload .txt file → 400 with "Supported formats: PDF, DOCX, PPTX"
 - [ ] Error: Upload > 50MB → 413
 - [ ] Error: Generate from unfinished indexing → 409 "Document still indexing"
 - [ ] Error: doc_scope="user" but user has no docs → 400 "No user documents found. Use doc_scope=system or all."
-- [ ] Error: Admin endpoint without X-Admin-Key → 403
+- [ ] Error: Unauthorized caller (no Cloud Run IAM) → 403
 - [ ] Game types endpoint: GET /api/v1/game-types → list with schemas
 
 ## Test Data
@@ -150,11 +151,11 @@ description: Define testing approach, test cases, and quality assurance
 
 ### Fixtures
 
-- SGK Toán 11 PDF: chương "Đạo hàm" (system doc)
-- SGK Vật lý 12 PDF: chương "Động lực học" (system doc)
-- Giáo án Toán 11 PDF: chương "Đạo hàm" (user doc)
-- Giáo trình Vật lý DOCX: chương "Động lực học" (user doc)
-- Slide bài giảng Hóa PPTX: chương "Cân bằng phương trình" (user doc)
+- Math 11 Textbook PDF: chapter "Derivatives" (system doc)
+- Physics 12 Textbook PDF: chapter "Dynamics" (system doc)
+- Math 11 Lesson Plan PDF: chapter "Derivatives" (user doc)
+- Physics Course Material DOCX: chapter "Dynamics" (user doc)
+- Chemistry Lecture Slides PPTX: chapter "Balancing Equations" (user doc)
 
 ### Mocks (for fast unit tests)
 
@@ -166,8 +167,8 @@ description: Define testing approach, test cases, and quality assurance
 
 ### Golden Test Set
 
-- 100 câu hỏi từ giáo án/giáo trình với đáp án verified
-- Covers: Toán (đạo hàm, tích phân), Lý (động lực học), Hóa (cân bằng)
+- 100 questions from lesson plans/course materials with verified answers
+- Covers: Math (derivatives, integrals), Physics (dynamics), Chemistry (balancing)
 - Used for accuracy measurement: target ≥ 98%
 
 ## Test Reporting & Coverage
@@ -183,28 +184,28 @@ description: Define testing approach, test cases, and quality assurance
 
 **What requires human validation?**
 
-- [ ] Chất lượng ngôn ngữ tiếng Việt (tự nhiên, đúng ngữ pháp)
-- [ ] Distractors hợp lý (đáp án sai không quá hiển nhiên)
-- [ ] Flashcard front đủ ngắn, back đủ chi tiết
-- [ ] Fill-blank chỗ trống ở vị trí hợp lý
-- [ ] Content grounding: output bám sát tài liệu (system docs hoặc user upload), không hallucinate
-- [ ] DOCX/PPTX extraction quality: text trích xuất đúng, không bị lỗi format
-- [ ] Multi-user: verify User A không thấy documents User B (nhưng cả hai thấy system docs)
-- [ ] Admin upload: system docs xuất hiện cho tất cả users
-- [ ] Game template output phù hợp dạng game
-- [ ] Game Client team verify JSON consume được
+- [ ] Vietnamese language quality (natural, grammatically correct)
+- [ ] Reasonable distractors (wrong answers not too obvious)
+- [ ] Flashcard front is concise enough, back is detailed enough
+- [ ] Fill-blank has blanks in appropriate positions
+- [ ] Content grounding: output stays close to documents (system docs or user uploads), no hallucination
+- [ ] DOCX/PPTX extraction quality: extracted text is correct, no format errors
+- [ ] Multi-user: verify User A cannot see User B's documents (but both can see system docs)
+- [ ] Admin upload: system docs appear for all users
+- [ ] Game template output appropriate for game type
+- [ ] Game Client team verifies JSON can be consumed
 
 ## Performance Testing
 
 **How do we validate performance?**
 
-- [ ] Latency: 10 câu < 60s (10 runs, p95)
-- [ ] Latency: 50 câu batch < 5 phút
+- [ ] Latency: 10 questions < 60s (10 runs, p95)
+- [ ] Latency: 50 questions batch < 5 minutes
 - [ ] Concurrent: 10 simultaneous requests → all succeed
 - [ ] Cloud Run cold start < 15s
 - [ ] Vertex AI Search query < 2s (p95)
-- [ ] Document indexing: PDF 50MB < 15 phút
-- [ ] Document indexing: DOCX/PPTX 50MB < 15 phút
+- [ ] Document indexing: PDF 50MB < 15 minutes
+- [ ] Document indexing: DOCX/PPTX 50MB < 15 minutes
 
 ## Bug Tracking
 
@@ -212,7 +213,8 @@ description: Define testing approach, test cases, and quality assurance
 
 - GitHub Issues: `bug`, `accuracy`, `performance`, `api`, `user-scoping`, `game-template`, `admin`, `system-docs`
 - Severity:
-  - **Critical:** Wrong answer, user data leak (cross-user), JSON schema mismatch, admin key leak
+  - **Critical:** Wrong answer, user data leak (cross-user), JSON schema mismatch, Cloud Run IAM bypass
   - **Major:** Timeout, poor quality, AI Search miss, format extraction fail, system docs not accessible
   - **Minor:** Formatting, slow but functional, cosmetic
 - Regression: Re-run golden test set before each release
+```
