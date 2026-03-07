@@ -1,0 +1,33 @@
+# Kế hoạch bài giảng - Phương trình bậc hai
+
+## Mục tiêu bài học
+- Học sinh hiểu công thức nghiệm phương trình bậc hai
+- Vận dụng được công thức vào giải bài tập
+
+## Nội dung chính
+
+### Phương trình bậc hai tổng quát
+ax² + bx + c = 0 (a ≠ 0)
+
+### Công thức nghiệm
+Δ = b² - 4ac
+
+- Nếu Δ > 0: Phương trình có 2 nghiệm phân biệt
+  x₁ = (-b + √Δ) / (2a)
+  x₂ = (-b - √Δ) / (2a)
+
+- Nếu Δ = 0: Phương trình có nghiệm kép
+  x = -b / (2a)
+
+- Nếu Δ < 0: Phương trình vô nghiệm
+
+### Bài tập áp dụng
+1. Giải phương trình: x² - 5x + 6 = 0
+   Δ = 25 - 24 = 1 > 0
+   x₁ = (5 + 1)/2 = 3
+   x₂ = (5 - 1)/2 = 2
+
+2. Giải phương trình: 2x² + 3x - 5 = 0
+   Δ = 9 + 40 = 49 > 0
+   x₁ = (-3 + 7)/4 = 1
+   x₂ = (-3 - 7)/4 = -5/2
