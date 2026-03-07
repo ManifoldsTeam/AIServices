@@ -69,12 +69,13 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [x] Configure `.env` với GCP credentials ✅
 - [x] Setup logging (`src/config/logging.py` - structlog console/JSON) ✅
 
-#### T1.2: Cấu hình GCP (1 ngày) ✅ Xác nhận 2026-03-06
+#### T1.2: Cấu hình GCP (1 ngày) ✅ Xác nhận 2026-03-07
 
 - [x] GCS bucket `documents-development-bucket` với folders: `system/`, `users/` ✅
 - [x] Firestore database: `aiservice-store` ✅
-- [x] Vertex AI Search Data Store: `aiservice-datastore-m1` ✅ (linked to bucket)
-- [ ] Upload fixture PDFs test indexing (pending)
+- [x] Vertex AI Search Data Store: `aiservice-datastore-m1_1772802306291` ✅
+- [x] Upload fixture files: `math_grade10_system.txt`, `lesson_plan_user.txt` ✅
+- [x] AI Search import: 2/2 documents indexed ✅
 - [ ] Tạo Cloud Tasks queue `generation-queue` (recommend - free tier)
 - [ ] Verify service account permissions
 

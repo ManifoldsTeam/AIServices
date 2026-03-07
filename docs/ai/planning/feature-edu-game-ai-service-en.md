@@ -143,11 +143,12 @@ description: Break down work into actionable tasks and estimate timeline
   - `.env` + `src/config/settings.py` (Pydantic Settings) ✅
   - `src/config/logging.py` (structlog: console/JSON) ✅
 
-- [x] **T1.2: GCP Resources Setup** ✅ Verified 2026-03-06
+- [x] **T1.2: GCP Resources Setup** ✅ Verified 2026-03-07
   - GCS Bucket: `documents-development-bucket` ✅ (folders: `system/`, `users/`)
   - Firestore: `aiservice-store` ✅ (asia-southeast1)
-  - AI Search Data Store: `aiservice-datastore-m1` ✅ (linked to bucket)
-  - **Pending:** Upload test documents and verify AI Search indexing
+  - AI Search Data Store: `aiservice-datastore-m1_1772802306291` ✅
+  - Test documents uploaded: `math_grade10_system.txt`, `lesson_plan_user.txt` ✅
+  - AI Search import: 2/2 documents indexed ✅
 
 - [ ] **T1.3: PoC VertexAISearchRetriever + metadata filter + doc_scope**
   - Write script to test `VertexAISearchRetriever` querying Data Store

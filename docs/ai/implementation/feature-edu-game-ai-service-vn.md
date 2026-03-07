@@ -208,25 +208,56 @@ git clone <repo-url> && cd AIServices
 conda activate AIservice
 pip install -e ".[dev]"
 
-# Cấu hình env (đã thiết lập)
-# .env, .env.develop đã cấu hình
+# Cấu hình env (ENV selector pattern)
+cp .env.example .env          # Đặt ENV=develop hoặc ENV=product
+cp .env.example .env.develop  # Chỉnh sửa giá trị development
+cp .env.example .env.product  # Chỉnh sửa giá trị production
 ```
 
-**Cấu hình đã xác nhận** (`.env`):
+**ENV Selector Pattern** — `.env` chỉ chứa selector môi trường:
 
 ```env
+# .env (chỉ selector - commit vào git dưới dạng .env.example)
+ENV=develop
+```
+
+**Cấu hình Development** (`.env.develop`):
+
+```env
+# GCP Configuration
 GCP_PROJECT_ID=green-mercury-485016-n1
 GCP_LOCATION=asia-southeast1
-DATA_STORE_ID=aiservice-datastore-m1
+
+# AI Search Configuration
+DATA_STORE_ID=aiservice-datastore-m1_1772802306291
 DATA_STORE_LOCATION=global
+
+# Storage Configuration
 GCS_BUCKET=documents-development-bucket
 FIRESTORE_DATABASE=aiservice-store
+
+# Cloud Tasks Configuration
 CLOUD_TASKS_QUEUE=generation-queue
 CLOUD_TASKS_LOCATION=asia-southeast1
+
+# Application Configuration
 SYSTEM_USER_ID=__system__
 LOG_LEVEL=DEBUG
 LOG_FORMAT=console
 ```
+
+**Cấu hình Production** (`.env.product`) — cùng keys, giá trị production:
+
+```env
+# GCP Configuration
+GCP_PROJECT_ID=<production-project-id>
+GCP_LOCATION=asia-southeast1
+# ... giá trị production
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+```
+
+> ⚠️ **QUY TẮC:** Không được hardcode biến môi trường trong code. Tất cả config qua `get_settings()`
 
 ```bash
 # Chạy dev server

@@ -208,25 +208,56 @@ git clone <repo-url> && cd AIServices
 conda activate AIservice
 pip install -e ".[dev]"
 
-# Configure env (already set up)
-# .env, .env.develop configured
+# Configure env (ENV selector pattern)
+cp .env.example .env          # Set ENV=develop or ENV=product
+cp .env.example .env.develop  # Edit with development values
+cp .env.example .env.product  # Edit with production values
 ```
 
-**Verified Configuration** (`.env`):
+**ENV Selector Pattern** — `.env` contains only the environment selector:
 
 ```env
+# .env (selector only - committed to git as .env.example)
+ENV=develop
+```
+
+**Development Configuration** (`.env.develop`):
+
+```env
+# GCP Configuration
 GCP_PROJECT_ID=green-mercury-485016-n1
 GCP_LOCATION=asia-southeast1
-DATA_STORE_ID=aiservice-datastore-m1
+
+# AI Search Configuration
+DATA_STORE_ID=aiservice-datastore-m1_1772802306291
 DATA_STORE_LOCATION=global
+
+# Storage Configuration
 GCS_BUCKET=documents-development-bucket
 FIRESTORE_DATABASE=aiservice-store
+
+# Cloud Tasks Configuration
 CLOUD_TASKS_QUEUE=generation-queue
 CLOUD_TASKS_LOCATION=asia-southeast1
+
+# Application Configuration
 SYSTEM_USER_ID=__system__
 LOG_LEVEL=DEBUG
 LOG_FORMAT=console
 ```
+
+**Production Configuration** (`.env.product`) — same keys, production values:
+
+```env
+# GCP Configuration
+GCP_PROJECT_ID=<production-project-id>
+GCP_LOCATION=asia-southeast1
+# ... production values
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+```
+
+> ⚠️ **RULE:** No hardcoding environment variables in code. All config via `get_settings()`
 
 ```bash
 # Run dev server
