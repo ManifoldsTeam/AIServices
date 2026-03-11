@@ -1,0 +1,19 @@
+# Toán học lớp 10 - Chương 1: Đạo hàm
+
+## 1.1 Khái niệm đạo hàm
+
+Đạo hàm của hàm số y = f(x) tại điểm x₀ là giới hạn:
+f'(x₀) = lim[Δx→0] (f(x₀ + Δx) - f(x₀)) / Δx
+
+## 1.2 Quy tắc tính đạo hàm
+
+- Đạo hàm của hằng số: (c)' = 0
+- Đạo hàm của x^n: (x^n)' = n·x^(n-1)
+- Quy tắc tổng: (u + v)' = u' + v'
+- Quy tắc tích: (u·v)' = u'·v + u·v'
+- Quy tắc thương: (u/v)' = (u'·v - u·v') / v²
+
+## 1.3 Ví dụ
+
+Ví dụ 1: Tính đạo hàm của f(x) = x³ + 2x² - 5x + 1
+Giải: f'(x) = 3x² + 4x - 5
