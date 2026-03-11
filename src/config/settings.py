@@ -29,6 +29,9 @@ def _get_env_file() -> str:
     1. ENV environment variable
     2. ENV in .env file
     3. Default: develop
+
+    Returns:
+        Full path to the environment file
     """
     # First, try to load .env to get ENV selector
     root_dir = Path(__file__).parent.parent.parent
@@ -38,16 +41,15 @@ def _get_env_file() -> str:
         load_dotenv(dotenv_path, override=False)
 
     env = os.getenv("ENV", "develop")
-    env_file = f".env.{env}"
+    env_file_path = root_dir / f".env.{env}"
 
     # Verify the env file exists
-    env_file_path = root_dir / env_file
     if not env_file_path.exists():
         raise FileNotFoundError(
-            f"Environment file '{env_file}' not found. " f"Expected at: {env_file_path}"
+            f"Environment file not found. Expected at: {env_file_path}"
         )
 
-    return env_file
+    return str(env_file_path)
 
 
 class Settings(BaseSettings):
@@ -56,7 +58,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(
             _get_env_file(),
-            ".env",
+            str(Path(__file__).parent.parent.parent / ".env"),
         ),  # Load env-specific first, then .env for overrides
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -72,7 +74,18 @@ class Settings(BaseSettings):
 
     # --- Vertex AI Search ---
     data_store_id: str
+    search_engine_id: str  # Search App engine ID for retrieval
     data_store_location: str = "global"
+
+    # --- Vertex AI Models ---
+    # Override via env vars to switch models without code changes.
+    # Current GA: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro
+    # Preview (3.x): gemini-3-flash-preview, gemini-3.1-pro-preview,
+    #                 gemini-3.1-flash-lite-preview
+    generation_model: str = "gemini-2.5-flash"
+    generation_model_location: str | None = None  # Falls back to gcp_location
+    review_model: str = "gemini-3.1-flash-lite-preview"
+    review_model_location: str | None = None  # Falls back to gcp_location
 
     # --- Cloud Storage ---
     gcs_bucket: str
@@ -104,6 +117,16 @@ class Settings(BaseSettings):
             f"locations/{self.data_store_location}/"
             f"collections/default_collection/"
             f"dataStores/{self.data_store_id}"
+        )
+
+    @property
+    def search_engine_path(self) -> str:
+        """Full resource path for Vertex AI Search engine."""
+        return (
+            f"projects/{self.gcp_project_id}/"
+            f"locations/{self.data_store_location}/"
+            f"collections/default_collection/"
+            f"engines/{self.search_engine_id}"
         )
 
     @property

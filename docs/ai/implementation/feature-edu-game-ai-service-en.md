@@ -230,7 +230,15 @@ GCP_LOCATION=asia-southeast1
 
 # AI Search Configuration
 DATA_STORE_ID=aiservice-datastore-m1_1772802306291
+SEARCH_ENGINE_ID=gp-mathagent_1773042630372
 DATA_STORE_LOCATION=global
+
+# Vertex AI Models (env-configurable, no code changes needed)
+# GA: gemini-2.5-flash | gemini-2.5-flash-lite | gemini-2.5-pro
+# Preview: gemini-3-flash-preview | gemini-3.1-pro-preview | gemini-3.1-flash-lite-preview
+GENERATION_MODEL=gemini-2.5-flash
+REVIEW_MODEL=gemini-3.1-flash-lite-preview
+REVIEW_MODEL_LOCATION=global
 
 # Storage Configuration
 GCS_BUCKET=documents-development-bucket
@@ -244,6 +252,12 @@ CLOUD_TASKS_LOCATION=asia-southeast1
 SYSTEM_USER_ID=__system__
 LOG_LEVEL=DEBUG
 LOG_FORMAT=console
+
+# LangSmith Tracing
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=edu-game-ai-dev
+# LANGCHAIN_API_KEY=lsv2_pt_XXXXXXXX
+LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
 ```
 
 **Production Configuration** (`.env.product`) — same keys, production values:
@@ -264,49 +278,51 @@ LOG_FORMAT=json
 uvicorn src.main:app --reload --port 8000
 ```
 
-## Code Structure
+## Code Structure (Verified 2026-03-11)
 
 **How is the code organized?**
+
+> **Status:** Core pipeline + all services implemented. API routes + deployment pending.
 
 ```
 src/
 ├── api/                        # FastAPI — thin layer, delegates to graph
-│   ├── routes/
+│   ├── schemas/                # ✅ ALL Pydantic API models IMPLEMENTED
+│   │   ├── requests.py         # ✅ DocScope, GenerationRequest, DocumentUploadRequest, AdminDocumentUploadRequest
+│   │   ├── responses.py        # ✅ JobStatus, GenerationMetadata, GameContentResponse, JobResponse, DocumentResponse, ErrorResponse
+│   │   └── game_content.py     # ✅ GameType, DifficultyLevel, QuizQuestion, QuizOption, Flashcard, FillBlankQuestion, BlankSlot, ContentItem
+│   ├── routes/                 # ⏳ NOT YET IMPLEMENTED
 │   │   ├── documents.py        # User upload, list, status
 │   │   ├── admin.py            # Admin: upload/list/delete system docs
 │   │   ├── generate.py         # Trigger LangGraph, return results
 │   │   └── game_types.py       # List available game types
-│   ├── schemas/                # Pydantic API models
-│   │   ├── requests.py         # GenerationRequest (with doc_scope)
-│   │   ├── responses.py        # GameContentResponse, error models
-│   │   └── game_content.py     # QuizQuestion, Flashcard, FillBlank, ContentItem
-│   └── deps.py                 # Cloud Run IAM verification, user_id extraction from body
-├── graph/                      # LangGraph — ALL BUSINESS LOGIC LIVES HERE
-│   ├── builder.py              # StateGraph: nodes, edges, compile
-│   ├── state.py                # AgentState TypedDict
+│   └── deps.py                 # ⏳ Cloud Run IAM verification, user_id extraction
+├── graph/                      # ✅ LangGraph — ALL BUSINESS LOGIC IMPLEMENTED
+│   ├── builder.py              # ✅ StateGraph: START → supervisor → math_agent → reviewer → (formatter→END | supervisor loop)
+│   ├── state.py                # ✅ AgentState TypedDict (request, search_context, content/reviewed/rejected items, iteration_count, final_output, errors)
 │   └── nodes/
-│       ├── supervisor.py       # Routing logic
-│       ├── math_agent.py       # Phase 1: Math/Physics/Chem + Code Execution
-│       ├── story_agent.py      # Phase 2: History/Literature + GraphRAG
-│       ├── visual_agent.py     # Phase 3: Geography/Biology + Multimodal
-│       ├── structure_agent.py  # Phase 4: Grammar/Tables + Table Parser
-│       ├── reviewer.py         # Quality gate (Gemini Flash)
-│       └── formatter.py        # Game template transform (Pydantic structured output)
-├── templates/                  # Game type templates — extensible
-│   ├── registry.py             # GAME_TEMPLATES dict: GameType → (Schema, prompt)
-│   ├── quiz.py                 # QuizQuestion schema + formatter prompt
-│   ├── flashcard.py            # Flashcard schema + formatter prompt
-│   └── fill_blank.py           # FillBlankQuestion schema + formatter prompt
-├── services/                   # GCP service wrappers (stateless)
-│   ├── vertex_search.py        # VertexAISearchRetriever factory + doc_scope filter + user-first re-ranking
-│   ├── llm.py                  # ChatVertexAI Pro/Flash factory
-│   ├── document_store.py       # GCS upload (system/ + user/{user_id}/) + AI Search import
-│   ├── firestore.py            # Firestore CRUD + job status tracking
-│   └── task_queue.py           # Cloud Tasks dispatch for async generation
+│       ├── supervisor.py       # ✅ Content classification + routing
+│       ├── math_agent.py       # ✅ Phase 1: Math/Physics/Chem + Vertex AI Search + structured output
+│       ├── reviewer.py         # ✅ Quality gate (pass ≥0.7), feedback with rejection reasons
+│       └── formatter.py        # ✅ Game template transform: quiz, flashcard, fill_blank sub-formatters
+├── services/                   # ✅ ALL GCP service wrappers IMPLEMENTED
+│   ├── vertex_search.py        # ✅ VertexAISearchRetriever factory + doc_scope filter + user-first re-ranking + engine-level serving config override
+│   ├── llm.py                  # ✅ get_generation_llm(), get_review_llm(), get_structured_llm() — per-model location support
+│   ├── document_store.py       # ✅ GCS upload (system/ + user/{user_id}/) + AI Search import + file validation
+│   ├── firestore.py            # ✅ Async Firestore CRUD: create/get/update/complete/fail job + document records
+│   └── task_queue.py           # ✅ Cloud Tasks dispatch with OIDC auth for async generation
 ├── config/
-│   └── settings.py             # Pydantic BaseSettings
-└── main.py                     # FastAPI app init
+│   ├── settings.py             # ✅ Pydantic BaseSettings (GENERATION_MODEL, REVIEW_MODEL, per-model locations)
+│   ├── constants.py            # ✅ LLM temps/tokens, file limits, MIME types
+│   └── logging.py              # ✅ structlog console/JSON setup
+└── main.py                     # ⏳ FastAPI app init — NOT YET CREATED
 ```
+
+**Notes:**
+
+- `templates/` directory NOT created — formatters inline in `formatter.py`
+- Story/Visual/Structure agents NOT created (Phase 2+)
+- No `routes/` or `deps.py` yet — needs FastAPI API layer
 
 ### Naming Conventions
 
@@ -574,9 +590,11 @@ GAME_TEMPLATES: dict[str, GameTemplate] = {
 
 ```python
 from langchain_google_vertexai import ChatVertexAI
+from src.config import get_settings
 
+settings = get_settings()
 model = ChatVertexAI(
-    model="gemini-2.0-flash",
+    model=settings.generation_model,  # env-configurable: gemini-2.5-flash
     tools=[{"code_execution": {"mode": "advanced"}}],
 )
 # Agent prompt asks model to solve math using Python, return numerical answer
@@ -590,7 +608,7 @@ def formatter_node(state: AgentState) -> dict:
     results = {}
     for game_type in state["request"].game_types:
         template = GAME_TEMPLATES[game_type]
-        llm = ChatVertexAI(model="gemini-2.0-flash")
+        llm = ChatVertexAI(model=settings.generation_model)  # env-configurable
         structured_llm = llm.with_structured_output(
             list[template.schema]  # Dynamic schema per game type
         )
@@ -642,7 +660,7 @@ def extract_user_id(request: GenerationRequest) -> str:
 - **Doc scope everywhere:** Every query uses `doc_scope` to determine filter. System docs always accessible. User docs scoped per user_id.
 - **Service-to-service trust:** Cloud Run IAM ensures only upstream can call. `user_id` from body is trusted.
 - **Dependency Injection:** FastAPI `Depends` for Firestore client, settings
-- **Config-driven:** Model selection, max retries, Data Store ID, `SYSTEM_USER_ID`, Cloud Tasks queue all from settings
+- **Config-driven:** Model selection via `Settings.generation_model`/`Settings.review_model` (env vars), tuning params in `src/config/constants.py`, Data Store ID, `SYSTEM_USER_ID`, Cloud Tasks queue all from settings
 - **Idempotency:** Each generation has unique request_id
 - **Game template extensibility:** Adding new game = add to `templates/` + register in `registry.py`
 
@@ -658,6 +676,18 @@ def extract_user_id(request: GenerationRequest) -> str:
 | Firestore        | `google-cloud-firestore`      | JSON output, metadata, checkpoints, job status      |
 | Cloud Tasks      | `google-cloud-tasks`          | Async generation dispatch, retry, dead-letter queue |
 | Secret Manager   | `google-cloud-secret-manager` | Service configuration at runtime                    |
+
+## Known Technical Issues & Workarounds (Verified 2026-03-11)
+
+| Issue                                                                  | Workaround                                                                                 | Status                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------- |
+| `VertexAISearchRetriever._serving_config` builds datastore-level path  | Override with engine-level path via `_apply_engine_serving_config()` in `vertex_search.py` | ✅ Fixed              |
+| Extractive answers require Enterprise tier                             | Upgraded engine to `SEARCH_TIER_ENTERPRISE` via SDK `update_engine()`                      | ✅ Fixed              |
+| `gemini-2.5-flash-lite` model not found                                | Changed to `gemini-3.1-flash-lite-preview` (Preview, global only)                          | ✅ Fixed              |
+| Per-model location mismatch (review model needs global)                | Added `generation_model_location`/`review_model_location` to Settings                      | ✅ Fixed              |
+| `usage_metadata` can be `dict` not object                              | Use `isinstance` check before attribute access                                             | ✅ Fixed in notebooks |
+| `gemini-3.1-flash-lite-preview` returns parts with `thought_signature` | `response.content` is list of parts — handle accordingly                                   | ⚠️ Known              |
+| `ChatVertexAI` deprecated in LangChain 3.2.0                           | Migrate to `langchain-google-genai` / `ChatGoogleGenerativeAI`                             | ⏳ Tech debt          |
 
 ## Error Handling
 

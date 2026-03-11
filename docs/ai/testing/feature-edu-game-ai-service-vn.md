@@ -7,6 +7,32 @@ description: Định nghĩa phương pháp kiểm thử, test cases, và đảm 
 
 # Chiến lược Kiểm thử
 
+## Kết quả Kiểm thử Notebook (Đã Xác nhận)
+
+> **Cập nhật lần cuối:** 2026-03-11
+
+### test_vertex_search.ipynb — 10/10 code cells PASS ✅
+
+- Vertex AI Search hoạt động với 225 PDFs sách giáo khoa tiếng Việt
+- Engine `gp-mathagent_1773042630372` đã nâng cấp lên SEARCH_TIER_ENTERPRISE
+- Extractive answers hoạt động, metadata filter đúng
+- Cần override `_serving_config` ở engine-level (datastore-level path không hoạt động)
+
+### test_services.ipynb — 11/11 code cells PASS ✅
+
+- Generation LLM (`gemini-2.5-flash`, asia-southeast1) hoạt động ✅
+- Review LLM (`gemini-3.1-flash-lite-preview`, global) hoạt động ✅
+- Structured output, Vertex AI Search, Firestore CRUD, GCS upload, Cloud Tasks — all PASS ✅
+- `usage_metadata` có thể là `dict` — cần dùng `isinstance` check
+- `gemini-3.1-flash-lite-preview` chỉ available ở `global` region
+
+### test_graph_pipeline.ipynb — CHƯA CHẠY ⏳
+
+- 14 cells đã tạo, chờ chạy
+- Tests: full pipeline E2E, feedback loop, multi-format output
+
+---
+
 ## Mục tiêu Coverage
 
 **Chúng ta nhắm đến mức kiểm thử nào?**

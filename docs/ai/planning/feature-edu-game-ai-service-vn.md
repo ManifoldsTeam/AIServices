@@ -29,10 +29,11 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 
 ### Phụ thuộc Kỹ thuật
 
-- [x] GCP Project `green-mercury-485016-n1` đã setup
-- [x] APIs đã enable: Vertex AI, Discovery Engine, Cloud Run, Firestore, Storage, Cloud Tasks
-- [ ] Vertex AI Search Data Store đã tạo và link bucket
-- [ ] Cloud Tasks queue `generation-queue` đã tạo
+- [x] GCP Project `green-mercury-485016-n1` đã setup ✅
+- [x] APIs đã enable: Vertex AI, Discovery Engine, Cloud Run, Firestore, Storage, Cloud Tasks ✅
+- [x] Vertex AI Search Data Store đã tạo và link bucket ✅ `aiservice-datastore-m1_1772802306291`
+- [x] Search Engine App: `gp-mathagent_1773042630372` (SEARCH_TIER_ENTERPRISE + SEARCH_ADD_ON_LLM) ✅ (upgraded 2026-03-09)
+- [x] Cloud Tasks queue `generation-queue` đã tạo ✅
 - [ ] Upstream service account với `roles/run.invoker` (sau T4.4)
 - [ ] Service account `edu-game-ai@...` với quyền cần thiết
 
@@ -69,35 +70,37 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [x] Configure `.env` với GCP credentials ✅
 - [x] Setup logging (`src/config/logging.py` - structlog console/JSON) ✅
 
-#### T1.2: Cấu hình GCP (1 ngày) ✅ Xác nhận 2026-03-07
+#### T1.2: Cấu hình GCP (1 ngày) ✅ Xác nhận 2026-03-08
 
 - [x] GCS bucket `documents-development-bucket` với folders: `system/`, `users/` ✅
 - [x] Firestore database: `aiservice-store` ✅
 - [x] Vertex AI Search Data Store: `aiservice-datastore-m1_1772802306291` ✅
 - [x] Upload fixture files: `math_grade10_system.txt`, `lesson_plan_user.txt` ✅
 - [x] AI Search import: 2/2 documents indexed ✅
-- [ ] Tạo Cloud Tasks queue `generation-queue` (recommend - free tier)
-- [ ] Verify service account permissions
+- [x] Tạo Cloud Tasks queue `generation-queue` ✅
+- [x] Verify service account permissions (user credentials for dev) ✅
 
-#### T1.3: LangGraph Cốt lõi (2 ngày)
+#### T1.3: LangGraph Cốt lõi (2 ngày) ✅ Xác nhận 2026-03-08
 
-- [ ] Định nghĩa `AgentState` TypedDict với `doc_scope`
-- [ ] Implement Supervisor node (extract user_id, doc_scope, route)
-- [ ] Implement Content Agent node (query AI Search + LLM generate) → **Phase 1: Math Agent**
-- [ ] Implement Reviewer node (Gemini Flash validation)
-- [ ] Implement Formatter node (template-based transform)
-- [ ] Build StateGraph với edges
-- [ ] Test local với hardcoded input
+- [x] Định nghĩa `AgentState` TypedDict với `doc_scope` ✅ `src/graph/state.py`
+- [x] Implement Supervisor node (extract user_id, doc_scope, route) ✅ `src/graph/nodes/supervisor.py`
+- [x] Implement Content Agent node (query AI Search + LLM generate) → **Phase 1: Math Agent** ✅ `src/graph/nodes/math_agent.py`
+- [x] Implement Reviewer node (Gemini Flash validation) ✅ `src/graph/nodes/reviewer.py`
+- [x] Implement Formatter node (template-based transform) ✅ `src/graph/nodes/formatter.py`
+- [x] Build StateGraph với edges ✅ `src/graph/builder.py`
+- [x] Test local với hardcoded input ✅ `notebooks/test_graph_pipeline.ipynb`
 
-#### T1.4: Vertex AI Search Integration (1.5 ngày)
+#### T1.4: Vertex AI Search Integration (1.5 ngày) ✅ Xác nhận 2026-03-08
 
-- [ ] Implement `vertex_search.py` với 3 filter modes:
+- [x] Implement `vertex_search.py` với 3 filter modes: ✅
   - `doc_scope="user"` → `user_id: ANY("{user_id}")`
   - `doc_scope="system"` → `user_id: ANY("__system__")`
   - `doc_scope="all"` → `user_id: ANY("{user_id}", "__system__")`
-- [ ] Implement user-first re-ranking cho `doc_scope="all"`
-- [ ] Test retrieval với fixture docs
-- [ ] Verify metadata filter hoạt động đúng
+- [x] Implement user-first re-ranking cho `doc_scope="all"` ✅
+- [x] Search Engine ID: `gp-mathagent_1773042630372` ✅
+- [x] 225 textbook PDFs đã indexed trong datastore ✅ (2026-03-09)
+- [x] Test retrieval với indexed PDFs — `test_vertex_search.ipynb` 10/10 cells PASS ✅
+- [x] Verify metadata filter hoạt động đúng — `test_vertex_search.ipynb` extractive answers + multi-query ✅
 
 **Deliverable Tuần 1**: Pipeline chạy local, AI Search trả về kết quả đúng với scope
 
@@ -105,16 +108,17 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 
 ### Tuần 2: Tính năng + Async (T2.x, T3.x)
 
-#### T2.1: Document Upload Service (1 ngày)
+#### T2.1: Document Upload Service (1 ngày) ✅ Implemented 2026-03-09
 
-- [ ] Implement `document_store.py`:
-  - Upload user docs: `user/{user_id}/{date}/{session}/`
-  - Upload system docs: `system/{date}/{session}/`
-  - Set metadata `user_id` (user hoặc `__system__`)
-- [ ] Trigger AI Search incremental import
-- [ ] Lưu DocumentRecord vào Firestore
-- [ ] Handle PDF/DOCX/PPTX validation (magic bytes + extension)
-- [ ] Implement 50MB size limit
+- [x] Implement `document_store.py`: ✅
+  - Upload user docs: `user/{user_id}/{date}/{session}/` ✅
+  - Upload system docs: `system/{date}/{session}/` ✅
+  - Set metadata `user_id` (user hoặc `__system__`) ✅
+- [x] Trigger AI Search incremental import ✅
+- [ ] Lưu DocumentRecord vào Firestore (cần API layer)
+- [x] Handle PDF/DOCX/PPTX validation (extension + MIME type) ✅
+- [x] Implement 50MB size limit ✅
+- [x] Constants centralized trong `src/config/constants.py` ✅
 
 #### T2.2: Admin API (0.5 ngày)
 
@@ -123,10 +127,12 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [ ] DELETE `/api/v1/admin/documents/{doc_id}` — delete system doc
 - [ ] Verify admin docs có `user_id: "__system__"` trong metadata
 
-#### T2.3: Cloud Tasks Async (1.5 ngày)
+#### T2.3: Cloud Tasks Async (1.5 ngày) ✅ Partially Implemented 2026-03-09
 
-- [ ] Implement `task_queue.py` — enqueue generation job
-- [ ] Implement JobRecord schema trong Firestore
+- [x] Implement `task_queue.py` — enqueue generation job ✅
+- [x] Implement `firestore.py` — Job lifecycle CRUD ✅
+  - create_job, get_job, update_job, complete_job, fail_job ✅
+  - Document records: save/get/delete ✅
 - [ ] POST `/api/v1/generate`:
   - Tạo job record (status: processing)
   - Enqueue Cloud Task
@@ -137,12 +143,11 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
   - Update job record (completed/failed)
 - [ ] GET `/api/v1/generations/{id}` — poll job status
 
-#### T2.4: Game Template System (1 ngày)
+#### T2.4: Game Template System (1 ngày) ✅ Partially Implemented 2026-03-09
 
-- [ ] Define `templates/registry.py` với `GAME_TEMPLATES` dict
-- [ ] Implement `quiz.py`: `QuizQuestion` schema + formatter prompt
-- [ ] Implement `flashcard.py`: `Flashcard` schema + formatter prompt
-- [ ] Implement `fill_blank.py`: `FillBlankQuestion` schema + formatter prompt
+- [x] Quiz, Flashcard, FillBlank sub-formatters inline trong `src/graph/nodes/formatter.py` ✅
+- [x] Structured output với `with_structured_output()` per game type ✅
+- [ ] Extract ra separate `templates/registry.py` module (optional refactor)
 - [ ] Test structured output generation mỗi loại
 
 #### T3.1: Code Execution cho STEM (1 ngày)
@@ -152,9 +157,9 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [ ] Test với 20 câu toán/lý/hóa từ golden set
 - [ ] Handle execution timeout gracefully
 
-#### T3.2: Pydantic Schemas Finalize (0.5 ngày)
+#### T3.2: Pydantic Schemas Finalize (0.5 ngày) ✅ Implemented 2026-03-09
 
-- [ ] Finalize tất cả request/response schemas
+- [x] All request/response/game content schemas implemented trong `src/api/schemas/` ✅
 - [ ] Generate OpenAPI spec
 - [ ] Review với Game Client team (async meeting nếu cần)
 - [ ] Confirm schema compatibility

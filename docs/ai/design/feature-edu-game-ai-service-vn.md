@@ -425,8 +425,6 @@ graph TD
     style REV fill:#f3e5f5
     style FMT fill:#e8f5e9
 
-````
-
 ### 1. Supervisor Node
 
 - **Nhiệm vụ**: Phân tích loại nội dung → route tới specialized agent phù hợp
@@ -494,7 +492,7 @@ for game_type in request.game_types:
     template = GAME_TEMPLATES[game_type]
     formatted = llm.with_structured_output(template.schema).invoke(...)
     results[game_type] = formatted
-````
+```
 
 ---
 

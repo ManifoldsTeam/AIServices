@@ -7,6 +7,60 @@ description: Define testing approach, test cases, and quality assurance
 
 # Testing Strategy
 
+## Notebook Test Results (Verified)
+
+> **Last Updated:** 2026-03-11
+
+### test_vertex_search.ipynb — 10/10 code cells PASS ✅
+
+| Cell | Description                                      | Status  |
+| ---- | ------------------------------------------------ | ------- |
+| 1    | Import dependencies                              | ✅ PASS |
+| 2    | Load settings & verify config                    | ✅ PASS |
+| 3    | Create retriever instance                        | ✅ PASS |
+| 4    | Basic search query                               | ✅ PASS |
+| 5    | Search with doc_scope="system" filter            | ✅ PASS |
+| 6    | Search with extractive answers (Enterprise tier) | ✅ PASS |
+| 7    | Multi-query search                               | ✅ PASS |
+| 8    | Verify metadata in results                       | ✅ PASS |
+| 9    | Edge case: empty query handling                  | ✅ PASS |
+| 10   | Summary & cleanup                                | ✅ PASS |
+
+**Key findings:**
+
+- Engine `gp-mathagent_1773042630372` upgraded to SEARCH_TIER_ENTERPRISE — extractive answers work
+- Engine-level `_serving_config` override required (datastore-level path doesn't work)
+- 225 Vietnamese textbook PDFs across 12+ subjects searchable
+
+### test_services.ipynb — 11/11 code cells PASS ✅
+
+| Cell | Description                                             | Status  |
+| ---- | ------------------------------------------------------- | ------- |
+| 1    | Import & setup                                          | ✅ PASS |
+| 2    | Verify settings loaded correctly                        | ✅ PASS |
+| 3    | Test generation LLM (gemini-2.5-flash, asia-southeast1) | ✅ PASS |
+| 4    | Test review LLM (gemini-3.1-flash-lite-preview, global) | ✅ PASS |
+| 5    | Test structured output (with_structured_output)         | ✅ PASS |
+| 6    | Test Vertex AI Search retriever                         | ✅ PASS |
+| 7    | Test RAG pipeline (retrieval + generation)              | ✅ PASS |
+| 8    | Test Firestore CRUD                                     | ✅ PASS |
+| 9    | Test document store (GCS upload)                        | ✅ PASS |
+| 10   | Test task queue (Cloud Tasks)                           | ✅ PASS |
+| 11   | Summary                                                 | ✅ PASS |
+
+**Key findings:**
+
+- `usage_metadata` from Gemini can be a `dict` (not always object) — use `isinstance` check
+- `gemini-3.1-flash-lite-preview` only available in `global` region — per-model location support added
+- `gemini-3.1-flash-lite-preview` returns parts with `thought_signature` in response content
+
+### test_graph_pipeline.ipynb — NOT YET EXECUTED ⏳
+
+- 14 cells created, awaiting execution
+- Tests: full pipeline E2E, feedback loop, multi-format output
+
+---
+
 ## Test Coverage Goals
 
 **What level of testing do we aim for?**
