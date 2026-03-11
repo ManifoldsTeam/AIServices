@@ -24,6 +24,7 @@ from .firestore import (
     update_job,
     complete_job,
     fail_job,
+    list_document_records,
 )
 from .task_queue import enqueue_generation
 
@@ -50,6 +51,7 @@ __all__ = [
     "update_job",
     "complete_job",
     "fail_job",
+    "list_document_records",
     # Task Queue
     "enqueue_generation",
 ]

@@ -120,35 +120,36 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [x] Implement 50MB size limit ✅
 - [x] Constants centralized trong `src/config/constants.py` ✅
 
-#### T2.2: Admin API (0.5 ngày)
+#### T2.2: Admin API (0.5 ngày) ✅ Verified 2026-03-11 (code-level)
 
-- [ ] POST `/api/v1/admin/documents/upload` với scope="system"
-- [ ] GET `/api/v1/admin/documents` — list system docs
-- [ ] DELETE `/api/v1/admin/documents/{doc_id}` — delete system doc
-- [ ] Verify admin docs có `user_id: "__system__"` trong metadata
+- [x] POST `/api/v1/admin/documents/upload` với scope="system" ✅
+- [x] GET `/api/v1/admin/documents` — list system docs ✅
+- [x] DELETE `/api/v1/admin/documents/{doc_id}` — delete system doc ✅
+- [x] Verify admin docs có `user_id: "__system__"` trong metadata ✅
 
-#### T2.3: Cloud Tasks Async (1.5 ngày) ✅ Partially Implemented 2026-03-09
+#### T2.3: Cloud Tasks Async (1.5 ngày) ✅ Verified local-first 2026-03-11
 
 - [x] Implement `task_queue.py` — enqueue generation job ✅
 - [x] Implement `firestore.py` — Job lifecycle CRUD ✅
   - create_job, get_job, update_job, complete_job, fail_job ✅
-  - Document records: save/get/delete ✅
-- [ ] POST `/api/v1/generate`:
+  - Document records: save/get/delete/list ✅
+- [x] POST `/api/v1/generate`: ✅ Verified 2026-03-11 (code-level)
   - Tạo job record (status: processing)
   - Enqueue Cloud Task
   - Return 202 với request_id
-- [ ] POST `/internal/execute-generation/{id}`:
+- [x] POST `/internal/execute-generation/{id}`: ✅ Verified 2026-03-11 (code-level)
   - Verify X-CloudTasks header
   - Run LangGraph pipeline
   - Update job record (completed/failed)
-- [ ] GET `/api/v1/generations/{id}` — poll job status
+- [x] GET `/api/v1/generations/{id}` — poll job status ✅ Verified 2026-03-11 (code-level)
+- [x] Local async fallback (không cần Cloud Run) cho môi trường develop ✅ Verified 2026-03-11 (`test_week2_local_session_2026_03_11.ipynb`)
 
 #### T2.4: Game Template System (1 ngày) ✅ Partially Implemented 2026-03-09
 
 - [x] Quiz, Flashcard, FillBlank sub-formatters inline trong `src/graph/nodes/formatter.py` ✅
 - [x] Structured output với `with_structured_output()` per game type ✅
 - [ ] Extract ra separate `templates/registry.py` module (optional refactor)
-- [ ] Test structured output generation mỗi loại
+- [x] Test generation mỗi loại (quiz, flashcard, fill_blank) ✅ Verified 2026-03-11 (`test_week2_local_session_2026_03_11.ipynb`)
 
 #### T3.1: Code Execution cho STEM (1 ngày)
 

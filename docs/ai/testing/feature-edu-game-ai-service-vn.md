@@ -26,6 +26,13 @@ description: Định nghĩa phương pháp kiểm thử, test cases, và đảm 
 - `usage_metadata` có thể là `dict` — cần dùng `isinstance` check
 - `gemini-3.1-flash-lite-preview` chỉ available ở `global` region
 
+### test_week2_local_session_2026_03_11.ipynb — PASS ✅ (local-first)
+
+- T2.3 local async fallback: `POST /api/v1/generate` -> `GET /api/v1/generations/{id}` completed ✅
+- T2.2 admin APIs: upload/list/delete system documents flow ✅
+- T2.4 game-type formatter smoke: quiz + flashcard + fill_blank đều sinh output ✅
+- Method: monkeypatch in-notebook cho local validation, không phụ thuộc Cloud Run build/deploy
+
 ### test_graph_pipeline.ipynb — CHƯA CHẠY ⏳
 
 - 14 cells đã tạo, chờ chạy

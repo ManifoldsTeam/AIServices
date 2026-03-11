@@ -252,3 +252,48 @@ async def delete_document_record(doc_id: str) -> bool:
 
     logger.info("document_record_deleted", doc_id=doc_id)
     return True
+
+
+async def list_document_records(
+    scope: str | None = None,
+    user_id: str | None = None,
+    limit: int = 100,
+) -> list[dict]:
+    """List document records with optional scope/user filters.
+
+    Args:
+        scope: Optional scope filter ("user" or "system").
+        user_id: Optional user ID filter.
+        limit: Maximum records to return.
+
+    Returns:
+        List of document records sorted by newest first.
+    """
+    client = _get_client()
+    query = client.collection("documents")
+
+    if scope:
+        query = query.where("scope", "==", scope)
+    if user_id:
+        query = query.where("user_id", "==", user_id)
+
+    query = query.limit(limit)
+
+    docs = query.stream()
+    records = []
+    async for doc in docs:
+        records.append(doc.to_dict())
+
+    records.sort(
+        key=lambda item: item.get("created_at")
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+    logger.info(
+        "listed_document_records",
+        scope=scope,
+        user_id=user_id,
+        count=len(records),
+    )
+    return records

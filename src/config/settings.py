@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     # --- Cloud Tasks ---
     cloud_tasks_queue: str = "generation-queue"
     cloud_tasks_location: str = "asia-southeast1"
+    cloud_tasks_invoker_service_account: str | None = None
+
+    # --- Cloud Run ---
+    cloud_run_base_url: str | None = None
+
+    # --- Local Development ---
+    local_async_mode: bool = False
 
     # --- Service Identity ---
     system_user_id: str = "__system__"
