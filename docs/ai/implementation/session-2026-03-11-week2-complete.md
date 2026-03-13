@@ -32,7 +32,7 @@ Hoàn thiện toàn bộ Week-2 TODOs (T2.2, T2.3, T2.4) và kiểm thử local-
 
 ### 3. Admin API (`src/api/routes/admin.py`)
 
-- `POST /api/v1/admin/documents/upload` — upload system doc (scope="system", user_id="__system__")
+- `POST /api/v1/admin/documents/upload` — upload system doc (scope="system", user_id="**system**")
 - `GET /api/v1/admin/documents` — list system docs từ Firestore
 - `DELETE /api/v1/admin/documents/{doc_id}` — xóa system doc
 
@@ -80,35 +80,35 @@ local_async_mode: bool = False
 
 ## Môi trường Dev Hiện tại
 
-| Var | Giá trị | Ý nghĩa |
-|-----|---------|---------|
-| `LOCAL_ASYNC_MODE` | `true` | BackgroundTasks fallback |
-| `CLOUD_RUN_BASE_URL` | (trống) | Không dùng Cloud Tasks |
-| `ENV` | `develop` | Load `.env.develop` |
+| Var                  | Giá trị   | Ý nghĩa                  |
+| -------------------- | --------- | ------------------------ |
+| `LOCAL_ASYNC_MODE`   | `true`    | BackgroundTasks fallback |
+| `CLOUD_RUN_BASE_URL` | (trống)   | Không dùng Cloud Tasks   |
+| `ENV`                | `develop` | Load `.env.develop`      |
 
 ---
 
 ## Vấn đề đã gặp & cách xử lý
 
-| Vấn đề | Giải pháp |
-|--------|-----------|
-| Firestore composite index khi dùng `order_by` + `where` | Bỏ `.order_by()`, sort trong Python sau `stream()` |
-| `BackgroundTasks` instantiate thủ công → tasks không chạy | Inject qua parameter FastAPI DI: `background_tasks: BackgroundTasks` |
-| Notebook `\\n` literal → `SyntaxError` | Rewrite cells qua `edit_notebook_file` với Python string đúng |
-| `ModuleNotFoundError: No module named 'src'` trong notebook | Thêm `sys.path` auto-detect loop tìm repo root |
-| Cloud Run build FAIL (chưa có Dockerfile) | Deliberately deferred — dùng `LOCAL_ASYNC_MODE` thay thế |
+| Vấn đề                                                      | Giải pháp                                                            |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| Firestore composite index khi dùng `order_by` + `where`     | Bỏ `.order_by()`, sort trong Python sau `stream()`                   |
+| `BackgroundTasks` instantiate thủ công → tasks không chạy   | Inject qua parameter FastAPI DI: `background_tasks: BackgroundTasks` |
+| Notebook `\\n` literal → `SyntaxError`                      | Rewrite cells qua `edit_notebook_file` với Python string đúng        |
+| `ModuleNotFoundError: No module named 'src'` trong notebook | Thêm `sys.path` auto-detect loop tìm repo root                       |
+| Cloud Run build FAIL (chưa có Dockerfile)                   | Deliberately deferred — dùng `LOCAL_ASYNC_MODE` thay thế             |
 
 ---
 
 ## Trạng thái Checklist Tuần 2
 
-| Task | Trạng thái |
-|------|------------|
-| T2.1 Document Upload Service | ✅ Done (2026-03-09) |
-| T2.2 Admin API | ✅ Verified local (2026-03-11) |
-| T2.3 Cloud Tasks Async | ✅ Verified local-first (2026-03-11) |
-| T2.4 Game Template System | ✅ Verified local (2026-03-11) |
-| T3.2 Pydantic Schemas | ✅ Done (2026-03-09) |
+| Task                         | Trạng thái                           |
+| ---------------------------- | ------------------------------------ |
+| T2.1 Document Upload Service | ✅ Done (2026-03-09)                 |
+| T2.2 Admin API               | ✅ Verified local (2026-03-11)       |
+| T2.3 Cloud Tasks Async       | ✅ Verified local-first (2026-03-11) |
+| T2.4 Game Template System    | ✅ Verified local (2026-03-11)       |
+| T3.2 Pydantic Schemas        | ✅ Done (2026-03-09)                 |
 
 **Deliverable M2/M3 đạt: Tất cả endpoints hoạt động, async flow verified, Admin API done.**
 
@@ -172,13 +172,13 @@ local_async_mode: bool = False
 
 ### GCP Resources
 
-| Resource | Giá trị |
-|----------|---------|
-| Project | `green-mercury-485016-n1` |
-| Region | `asia-southeast1` |
-| Vertex AI Search Engine | `gp-mathagent_1773042630372` |
-| Cloud Tasks Queue | `generation-queue` |
-| Firestore DB | `aiservice-store` |
+| Resource                         | Giá trị                                           |
+| -------------------------------- | ------------------------------------------------- |
+| Project                          | `green-mercury-485016-n1`                         |
+| Region                           | `asia-southeast1`                                 |
+| Vertex AI Search Engine          | `gp-mathagent_1773042630372`                      |
+| Cloud Tasks Queue                | `generation-queue`                                |
+| Firestore DB                     | `aiservice-store`                                 |
 | Cloud Run service (build failed) | `aiservices-711906617662.asia-southeast1.run.app` |
 
 ### Known Constraints
@@ -198,9 +198,9 @@ local_async_mode: bool = False
 
 ## Notebook Sessions đã verify
 
-| Notebook | Cells | Kết quả | Ngày |
-|----------|-------|---------|------|
-| `test_vertex_search.ipynb` | 10/10 | PASS | 2026-03-09 |
-| `test_services.ipynb` | 11/11 | PASS | 2026-03-09 |
-| `test_week2_local_session_2026_03_11.ipynb` | 5/5 | PASS | 2026-03-11 |
-| `test_graph_pipeline.ipynb` | 0/14 | **CHƯA CHẠY** | — |
+| Notebook                                    | Cells | Kết quả       | Ngày       |
+| ------------------------------------------- | ----- | ------------- | ---------- |
+| `test_vertex_search.ipynb`                  | 10/10 | PASS          | 2026-03-09 |
+| `test_services.ipynb`                       | 11/11 | PASS          | 2026-03-09 |
+| `test_week2_local_session_2026_03_11.ipynb` | 5/5   | PASS          | 2026-03-11 |
+| `test_graph_pipeline.ipynb`                 | 0/14  | **CHƯA CHẠY** | —          |
