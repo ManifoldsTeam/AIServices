@@ -2,7 +2,8 @@
 
 from fastapi import FastAPI
 
-from src.api.routes import admin_router, generation_router, internal_router
+from src.api.errors import register_error_handlers
+from src.api.routes import admin_router, generation_router, internal_router, user_router
 from src.config import setup_logging
 
 setup_logging()
@@ -12,6 +13,8 @@ app = FastAPI(
     version="0.1.0",
     description="Async educational game content generation service",
 )
+
+register_error_handlers(app)
 
 
 @app.get("/health", tags=["health"])
@@ -23,3 +26,4 @@ def health_check() -> dict:
 app.include_router(generation_router)
 app.include_router(admin_router)
 app.include_router(internal_router)
+app.include_router(user_router)

@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from src.api.schemas.requests import GenerationRequest
 from src.api.schemas.responses import JobResponse, JobStatus
+from src.api.schemas.game_content import GameType, DifficultyLevel
 from src.config import get_settings
 from src.services.generation_executor import execute_generation_job
 from src.services.firestore import create_job, get_job
@@ -77,6 +78,13 @@ async def get_generation_job(request_id: str) -> JobResponse:
     try:
         parsed_status = JobStatus(status_value)
     except ValueError:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Invalid job status %r for request %s, defaulting to FAILED",
+            status_value,
+            request_id,
+        )
         parsed_status = JobStatus.FAILED
 
     return JobResponse(
@@ -87,3 +95,19 @@ async def get_generation_job(request_id: str) -> JobResponse:
         created_at=job["created_at"],
         completed_at=job.get("completed_at"),
     )
+
+
+@router.get("/game-types")
+async def list_game_types() -> list[dict]:
+    """List supported game types with their difficulty levels.
+
+    Used by Game Client to discover available content formats.
+    """
+    return [
+        {
+            "type": game_type.value,
+            "name": game_type.name.replace("_", " ").title(),
+            "difficulties": [d.value for d in DifficultyLevel],
+        }
+        for game_type in GameType
+    ]

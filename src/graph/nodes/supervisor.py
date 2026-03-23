@@ -16,6 +16,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 from src.graph.state import AgentState
 from src.config import get_settings
+from src.services.llm import get_review_llm
 
 logger = structlog.get_logger(__name__)
 
@@ -56,15 +57,8 @@ What is the content type?""",
 
 
 def _get_llm() -> ChatVertexAI:
-    """Get Gemini Pro LLM for supervisor."""
-    settings = get_settings()
-    return ChatVertexAI(
-        model_name="gemini-1.5-flash",  # Fast classification (2.0 not available in asia-southeast1)
-        project=settings.gcp_project_id,
-        location=settings.gcp_location,
-        temperature=0,  # Deterministic classification
-        max_output_tokens=10,
-    )
+    """Get Gemini LLM for supervisor classification."""
+    return get_review_llm(temperature=0, max_output_tokens=10)
 
 
 async def supervisor_node(state: AgentState) -> dict:
