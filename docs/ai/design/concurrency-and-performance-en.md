@@ -1,278 +1,494 @@
 ---
 phase: design
-title: Concurrency & Performance Optimization
+title: Concurrency & Performance Optimization (v2)
 description: Architecture for handling concurrent requests and reducing per-request latency
 created: 2026-03-22
-status: Proposal
+updated: 2026-03-24
+status: Updated Proposal — Research-backed
+research_sources: Tavily Pro research (2026-03-24), Vertex AI docs, LangGraph docs, asyncio best practices
 ---
 
-# Concurrency & Performance Optimization
+# Concurrency & Performance Optimization (v2)
 
-## 1. Current Performance Baseline
+> **Updated:** 2026-03-24
+> **Research:** Tavily Pro deep research on LLM pipeline concurrency patterns (33 sources)
+> **Scope:** Within-pipeline parallelism, cross-request scaling, rate limiting, batch processing
 
-From T4.2 accuracy test (100 quiz questions, 10 topics × 10 questions):
+---
 
-| Stage                             | Time                | Notes                          |
-| --------------------------------- | ------------------- | ------------------------------ |
-| Generation (10Q per pipeline run) | ~52-208s per topic  | Sequential LLM calls           |
-| Worst case single topic           | 813s                | "Số phức" — 3 retry iterations |
-| **Total 100Q generation**         | **2019s (~34 min)** | 10 sequential pipeline runs    |
-| Evaluation (100Q)                 | 334s                | Sequential structured output   |
-| **Total**                         | **2353s (~39 min)** |                                |
+## 1. Current Performance Baseline (Post-M3 Optimizations)
+
+### Pipeline Test Results (M3 accuracy test — 368 items)
+
+| Test                    | Items | Pass% | Time   | Notes                                |
+| ----------------------- | ----- | ----- | ------ | ------------------------------------ |
+| smoke_5q                | 5     | 100%  | 64.2s  |                                      |
+| medium_15q              | 15    | 100%  | 92.8s  |                                      |
+| large_30q               | 25    | 64.1% | 125.0s | **429 rate limit errors observed**   |
+| multi_type (3 games)    | 45    | 100%  | 70.9s  | Formatter parallelization working    |
+| diff_application        | 7     | 100%  | 163.5s |                                      |
+| diff_high_application   | 1     | 7.1%  | 434.9s | Broken — KB lacks exercise exemplars |
+| **TOTAL**               | 368   |**89%**|1700.2s | 28.3min for full suite               |
 
 ### LLM Call Chain Per Pipeline Run (10Q quiz-only)
 
 | Node             | Calls  | Model                         | Purpose            | Est. Time    |
-| ---------------- | ------ | ----------------------------- | ------------------ | ------------ |
+| ---------------- | ------ | ----------------------------- | ------------------- | ------------ |
 | Supervisor       | 1      | gemini-3.1-flash-lite         | Classification     | ~2s          |
 | Math Agent Gen   | 1      | gemini-2.5-flash (code_exec)  | Content generation | ~30-60s      |
-| Math Agent Parse | 2      | gemini-2.5-flash (structured) | Batch parse 7+6    | ~15-30s      |
+| Math Agent Parse | 1-2    | gemini-2.5-flash (structured) | Batch parse 7+6    | ~15-30s      |
 | Reviewer         | 1      | gemini-3.1-flash-lite         | Batch review       | ~5-10s       |
-| Formatter (quiz) | 2      | gemini-2.5-flash (structured) | Batch format 7+3   | ~10-20s      |
+| Formatter (quiz) | 1-2    | gemini-2.5-flash (structured) | Batch format 7+3   | ~10-20s      |
 | **Total**        | **~7** |                               |                    | **~60-120s** |
 
 With retry iterations: ×2-3 multiplier on worst cases.
 
----
+### Key Problem: No Rate Limiting on LLM Calls
 
-## 2. Optimizations Implemented (2026-03-22)
-
-### 2.1 Formatter Parallelization — `asyncio.gather()`
-
-**Before:** Sequential `for game_type in request.game_types:` loop.
-**After:** All game types formatted concurrently via `asyncio.gather()`.
-
-```python
-# Before: Sequential (~30-60s for 3 game types)
-for game_type in request.game_types:
-    if game_type == GameType.QUIZ:
-        quiz_items = await _format_quizzes(reviewed_items, llm)
-    elif game_type == GameType.FLASHCARD:
-        flashcard_items = await _format_flashcards(reviewed_items, llm)
-    ...
-
-# After: Parallel (~10-20s for 3 game types)
-results = await asyncio.gather(
-    *[_safe_format(gt) for gt in request.game_types]
-)
-```
-
-**Impact:** ~2-3× speedup for multi-game-type requests (most common case).
-
-### 2.2 Batch Parse Retry with Backoff
-
-**Before:** Single attempt per batch; failure = lost items, may trigger full retry iteration.
-**After:** Up to 3 attempts per batch with linear backoff (1s, 2s).
-
-**Impact:** Reduces full pipeline retry iterations (813s → ~200-300s estimated for "Số phức").
+**429 errors in `large_30q` test** — parallel batch parsing fires 4+ concurrent LLM calls without any rate control. With 60 RPM default quota (asia-southeast1), burst patterns exceed limits.
 
 ---
 
-## 3. Proposed Optimizations (Not Yet Implemented)
+## 2. Optimizations Implemented (M3 — Done)
 
-### 3.1 Within-Pipeline Parallelization
+| Optimization | Where | Impact |
+|---|---|---|
+| Formatter `asyncio.gather()` for game types | `formatter.py` | 2-3× speedup for multi-game requests |
+| Batch parse retry with backoff | `math_agent.py` `_parse_batch()` | Fewer full pipeline retries |
+| Parallel batch parsing via `asyncio.gather()` | `math_agent.py` `_parse_raw_content()` | 2× parse speed |
+| Code trace truncation (8000 chars) | `math_agent.py` `_truncate_code_traces()` | Better parse success rate |
+| Internal generation retry (2 attempts) | `math_agent.py` `math_agent_node()` | Avoids full pipeline restart on parse failure |
+| Early termination on empty output | `math_agent.py` | Skip useless parse attempts |
 
-#### A. Parallel Batch Parsing in Math Agent
+---
 
-Currently batches are parsed sequentially. Since each batch extracts different question ranges from the same raw text, they can run concurrently:
+## 3. Proposed Architecture: Layered Concurrency Control
 
-```python
-# Current: Sequential
-for batch_idx in range(num_batches):
-    batch_result = await structured_llm.ainvoke(batch_messages)
+Based on research of production LLM systems, Vertex AI best practices, and asyncio patterns.
 
-# Proposed: Parallel
-batch_tasks = [structured_llm.ainvoke(msg) for msg in all_batch_messages]
-batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+### 3.1 Architecture Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        Layer 1: API Gateway                          │
+│   POST /api/v1/generate → Firestore job → queue dispatch            │
+│   Request splitting: 100Q → 10×10Q sub-jobs                         │
+└──────────────────────┬───────────────────────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────────────────────┐
+│                  Layer 2: Job Scheduler                               │
+│   Cloud Tasks queue (rate: 5/s, max concurrent: 10)                  │
+│   OR local asyncio.Queue with worker pool (dev mode)                 │
+└──────────────────────┬───────────────────────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────────────────────┐
+│               Layer 3: Per-Instance Rate Limiter                     │
+│   AsyncTokenBucket (capacity=5, refill=1.0/s per 60RPM)             │
+│   + asyncio.Semaphore(10) per-process concurrency cap                │
+│   Every LLM call → bucket.wait_and_consume() → sema acquire         │
+└──────────────────────┬───────────────────────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────────────────────┐
+│             Layer 4: LangGraph Pipeline Execution                    │
+│   supervisor → math_agent → reviewer → formatter → END              │
+│   Internal: parallel batch parse, parallel game-type format          │
+│   Per-node retry with backoff (not full graph retry)                 │
+└──────────────────────┬───────────────────────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────────────────────┐
+│            Layer 5: Circuit Breaker + Observability                   │
+│   Trip after 5 consecutive 429s → cooldown 60s                      │
+│   Metrics: latency p95, 429 rate, queue depth, bucket fill level    │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Impact:** ~2× speedup on parse phase (15-30s → 8-15s).
-**Risk:** Higher burst rate on Vertex AI API. Monitor 429 rate-limit errors.
+### 3.2 Layer 3 Detail: AsyncTokenBucket + Semaphore
 
-#### B. Parallel Batch Formatting Within Each Game Type
-
-Each game type's formatter already batches by `FORMATTER_BATCH_SIZE=7`. These batches could also run in parallel:
+**Purpose:** Prevent 429 errors by pacing LLM calls client-side to match Vertex AI quotas.
 
 ```python
-# Current: Sequential batches within _format_quizzes
+# src/services/rate_limiter.py
+
+import asyncio
+import time
+from dataclasses import dataclass, field
+
+@dataclass
+class AsyncTokenBucket:
+    """Async-safe token bucket for rate limiting LLM calls.
+
+    capacity: max burst size (requests)
+    refill_rate: tokens/second (e.g., 1.0 for 60 RPM)
+    """
+    capacity: float
+    refill_rate: float
+    _tokens: float = field(init=False)
+    _last_refill: float = field(init=False)
+    _lock: asyncio.Lock = field(init=False)
+
+    def __post_init__(self):
+        self._tokens = self.capacity
+        self._last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def _refill(self):
+        now = time.monotonic()
+        elapsed = now - self._last_refill
+        self._tokens = min(self.capacity, self._tokens + elapsed * self.refill_rate)
+        self._last_refill = now
+
+    async def wait_and_consume(self, amount: float = 1.0):
+        """Block until a token is available, then consume it."""
+        while True:
+            async with self._lock:
+                await self._refill()
+                if self._tokens >= amount:
+                    self._tokens -= amount
+                    return
+                needed = amount - self._tokens
+                wait_time = needed / self.refill_rate if self.refill_rate > 0 else 1.0
+            await asyncio.sleep(wait_time)
+
+
+# Module-level singleton (created once per process)
+# 60 RPM = 1 req/sec average, allow burst of 5
+_llm_bucket = AsyncTokenBucket(capacity=5.0, refill_rate=1.0)
+_llm_semaphore = asyncio.Semaphore(10)  # max 10 concurrent LLM calls
+
+async def rate_limited_llm_call(coro):
+    """Wrap any LLM call with rate limiting + concurrency cap.
+
+    Usage:
+        result = await rate_limited_llm_call(llm.ainvoke(messages))
+    """
+    await _llm_bucket.wait_and_consume()
+    async with _llm_semaphore:
+        return await coro
+```
+
+**Why this design:**
+- **Token bucket** enforces average rate (1 req/s = 60 RPM) while allowing short bursts (capacity=5)
+- **Semaphore** caps concurrent HTTP connections to prevent resource exhaustion
+- **Module-level singletons** ensure all pipeline nodes share the same limiter
+- No external dependencies (Redis not needed for single-instance local/Cloud Run)
+
+**Tuning for quota:**
+
+| Quota (RPM) | `refill_rate` | `capacity` | `semaphore` | Max Concurrent Instances |
+|---|---|---|---|---|
+| 60 (default) | 1.0 | 5 | 10 | 1 (safety margin) |
+| 200 (requested) | 3.0 | 10 | 15 | 3-5 |
+| 500 (high) | 8.0 | 15 | 20 | 8-10 |
+
+### 3.3 Integration Points in Current Codebase
+
+Where to wire `rate_limited_llm_call()`:
+
+| File | Function | LLM Calls | Change |
+|---|---|---|---|
+| `math_agent.py` | `math_agent_node()` | `code_exec_llm.ainvoke()` | Wrap with rate limiter |
+| `math_agent.py` | `_parse_batch()` | `structured_llm.ainvoke()` | Wrap with rate limiter |
+| `formatter.py` | `_format_quizzes()` | `chain.ainvoke()` | Wrap with rate limiter |
+| `formatter.py` | `_format_flashcards()` | `chain.ainvoke()` | Wrap with rate limiter |
+| `formatter.py` | `_format_fill_blanks()` | `chain.ainvoke()` | Wrap with rate limiter |
+| `reviewer.py` | `reviewer_node()` | `review_llm.ainvoke()` | Wrap with rate limiter |
+| `supervisor.py` | `supervisor_node()` | `llm.ainvoke()` | Wrap with rate limiter |
+
+**Minimal code change per call site:**
+
+```python
+# Before:
+result = await structured_llm.ainvoke(messages)
+
+# After:
+from src.services.rate_limiter import rate_limited_llm_call
+result = await rate_limited_llm_call(structured_llm.ainvoke(messages))
+```
+
+### 3.4 Layer 5 Detail: Circuit Breaker
+
+**Purpose:** Stop retrying when the provider is persistently failing (quota exhausted, outage).
+
+```python
+# Add to src/services/rate_limiter.py
+
+@dataclass
+class CircuitBreaker:
+    """Simple circuit breaker for LLM provider failures."""
+    failure_threshold: int = 5
+    cooldown_seconds: float = 60.0
+    _consecutive_failures: int = field(init=False, default=0)
+    _tripped_at: float | None = field(init=False, default=None)
+
+    def record_success(self):
+        self._consecutive_failures = 0
+        self._tripped_at = None
+
+    def record_failure(self):
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self.failure_threshold:
+            self._tripped_at = time.monotonic()
+
+    @property
+    def is_open(self) -> bool:
+        if self._tripped_at is None:
+            return False
+        elapsed = time.monotonic() - self._tripped_at
+        if elapsed > self.cooldown_seconds:
+            # Half-open: allow one attempt
+            self._tripped_at = None
+            self._consecutive_failures = 0
+            return False
+        return True
+```
+
+---
+
+## 4. Proposed Optimizations: Prioritized Implementation
+
+### P0 — Within-Pipeline Parallelism (DONE)
+
+| Optimization | Status | File |
+|---|---|---|
+| Formatter `asyncio.gather()` for game types | Done | `formatter.py` |
+| Batch parse retry with backoff | Done | `math_agent.py` |
+| Parallel batch parsing via `asyncio.gather()` | Done | `math_agent.py` |
+| Code trace truncation (8000 chars) | Done | `math_agent.py` |
+| Internal generation retry (2 attempts) | Done | `math_agent.py` |
+
+### P1 — Client-Side Rate Limiting (CRITICAL — Blocks all scaling)
+
+**Problem:** 429 errors in `large_30q` test. No rate control on any LLM call.
+
+**Solution:** `AsyncTokenBucket` + `asyncio.Semaphore` (Section 3.2 above)
+
+**Implementation steps:**
+1. Create `src/services/rate_limiter.py` with `AsyncTokenBucket`, `CircuitBreaker`, and `rate_limited_llm_call()`
+2. Wire into all 7 LLM call sites (table in Section 3.3)
+3. Add rate limiter config to `Settings` (env-configurable: `LLM_RATE_LIMIT_RPM`, `LLM_MAX_CONCURRENT`)
+4. Test with `large_30q` — expect 429 errors to disappear
+
+**Effort:** Low-Medium (1 new file + 7 one-line wrappers)
+**Impact:** Eliminates 429 errors, enables safe parallel operations, prerequisite for all scaling
+
+### P2 — Parallel Format Batches Within Game Types
+
+**Problem:** Each game type's formatter runs batches sequentially inside `_format_quizzes()`, `_format_flashcards()`, `_format_fill_blanks()`.
+
+**Current pattern:**
+```python
 for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
-    result = await chain.ainvoke(batch_data)
+    result = await chain.ainvoke(...)  # Sequential!
+```
 
-# Proposed: Parallel batches
+**Proposed pattern:**
+```python
 batch_tasks = [chain.ainvoke(bd) for bd in all_batch_data]
 results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 ```
 
-**Impact:** Additional ~1.5× for large question sets (20+ items).
+**Prerequisite:** P1 rate limiter (prevents burst overload)
+**Impact:** ~1.5× for large sets (20+ items per game type)
+**Effort:** Low (refactor 3 formatter functions)
 
-### 3.2 Cross-Request Concurrency
+### P3 — Request Batching (100Q → N×10Q Sub-Jobs)
 
-#### Current Architecture
+**Use case:** Teacher generates 100 questions for exam prep.
 
+**Architecture:**
 ```
-Client → POST /api/v1/generate → Firestore job → Cloud Tasks enqueue → Cloud Run HTTP
-                                                                         ↓
-Client ← GET  /api/v1/generations/{id} ← Firestore poll ← Pipeline execution (sequential)
-```
-
-Cloud Tasks already provides cross-request concurrency — each generation job is an independent HTTP request to Cloud Run.
-
-#### A. Cloud Run Auto-Scaling
-
-Cloud Run can scale to multiple instances. Each instance handles one pipeline run.
-
-```yaml
-# cloud-run-config
-apiVersion: serving.knative.dev/v1
-spec:
-  template:
-    metadata:
-      annotations:
-        autoscaling.knative.dev/maxScale: "10" # Max 10 concurrent pipelines
-        autoscaling.knative.dev/minScale: "0" # Scale to zero when idle
-    spec:
-      containerConcurrency: 1 # 1 pipeline per instance (CPU-bound on LLM I/O wait)
-      timeoutSeconds: 600 # 10 min timeout per request
+POST /generate { num_questions: 100 }
+  │
+  ├─ Split: 10 sub-jobs × 10Q each
+  │    ├─ sub-1: { num_questions: 10, topic: same, offset: 0 }
+  │    ├─ sub-2: { num_questions: 10, topic: same, offset: 10 }
+  │    └─ ...
+  │
+  ├─ Schedule: asyncio.Queue(maxsize=20) + N workers
+  │    ├─ Worker 1: run_pipeline(sub-1) → checkpoint result
+  │    ├─ Worker 2: run_pipeline(sub-2) → checkpoint result
+  │    └─ ... (bounded by rate limiter)
+  │
+  └─ Aggregate: collect results → order by offset → merge → return
 ```
 
-**Impact:** N concurrent users → N parallel pipeline runs (up to maxScale).
-**Cost:** Pay-per-request. At 10 concurrent runs × $0.00002/vCPU-sec, ~$0.012/run.
-
-#### B. Cloud Tasks Rate Limiting
-
-Prevent burst overload on Vertex AI quotas:
+**Implementation pattern (local async mode):**
 
 ```python
-# Cloud Tasks queue config
-queue_config = {
-    "rate_limits": {
-        "max_dispatches_per_second": 5,      # Max 5 new pipelines/sec
-        "max_concurrent_dispatches": 10,     # Max 10 running simultaneously
-    },
-    "retry_config": {
-        "max_attempts": 3,
-        "min_backoff": "10s",
-        "max_backoff": "300s",
-    }
-}
+import asyncio
+import itertools
+
+def chunkify(items, chunk_size):
+    it = iter(items)
+    while True:
+        chunk = list(itertools.islice(it, chunk_size))
+        if not chunk:
+            break
+        yield chunk
+
+async def batch_generate(request, max_workers=5):
+    """Split large request into sub-jobs, process with bounded parallelism."""
+    if request.num_questions <= 10:
+        return await run_pipeline(request)
+
+    chunks = list(range(0, request.num_questions, 10))
+    queue = asyncio.Queue(maxsize=max_workers * 2)
+    results = {}
+
+    async def worker(worker_id):
+        while True:
+            try:
+                offset = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            sub_req = request.model_copy()
+            sub_req.num_questions = min(10, request.num_questions - offset)
+            result = await run_pipeline(sub_req)
+            results[offset] = result
+            queue.task_done()
+
+    for offset in chunks:
+        await queue.put(offset)
+
+    workers = [asyncio.create_task(worker(i)) for i in range(max_workers)]
+    await queue.join()
+    for w in workers:
+        w.cancel()
+
+    # Merge ordered
+    return merge_results(sorted(results.items()))
 ```
 
-#### C. Vertex AI Quota Awareness
+**For Cloud Tasks mode:** Each sub-job = separate Cloud Tasks entry → separate Cloud Run instance.
 
-Gemini 2.5 Flash quota (asia-southeast1):
+**Partial failure handling:**
+- Each sub-job checkpoints independently (Firestore status per sub-job)
+- Failed sub-jobs can be retried individually
+- Parent job aggregates: if >=80% sub-jobs succeed, return partial result + failure report
 
-- Default: 60 RPM (requests per minute), 1M TPM (tokens per minute)
-- Each pipeline run: ~7 LLM calls, ~3000 input tokens, ~5000 output tokens per call
-- 10 concurrent runs: ~70 RPM, ~500K TPM → within default quota
+**Impact:** 10× speedup for 100Q (2000s → ~200s)
+**Effort:** Medium
+**Prerequisite:** P1 rate limiter
 
-**Recommendation:** Request quota increase to 200 RPM if expecting >15 concurrent users.
+### P4 — Cross-Instance Rate Limiting (Production Multi-Instance)
 
-### 3.3 Request Batching (Future)
+**When needed:** Multiple Cloud Run instances sharing the same Vertex AI project quota.
 
-For use case: "teacher generates 100 questions for exam prep"
+**Options (increasing complexity):**
 
-Instead of running 10 sequential pipeline invocations of 10Q each, split into parallel sub-jobs:
+| Approach | When | Complexity | Recommendation |
+|---|---|---|---|
+| Per-instance token bucket | <=3 instances | None (already in P1) | Divide quota by max instances |
+| Cloud Tasks dispatch rate | Any scale | Low (config) | Set `max_dispatches_per_second` |
+| Redis-backed distributed bucket | >5 instances | Medium | Use `self-limiters` library |
 
-```
-POST /api/v1/generate { num_questions: 100, ... }
-  → Split into 10 sub-jobs of 10Q each
-  → Enqueue all 10 to Cloud Tasks simultaneously
-  → Each runs on separate Cloud Run instance
-  → Aggregate results in Firestore
-  → Return combined result
+**For our scale (<=10 instances):** Cloud Tasks rate limiting (5/s dispatch, 10 max concurrent) is sufficient. No Redis needed until >50 RPM per instance.
 
-Timeline: 10 × ~120s sequential → ~120s parallel (10× speedup)
-```
+### P5 — Caching Layer (Future)
 
-**Implementation:**
+**Strategy:** Cache at two levels:
+1. **Vertex AI Search results** — same query+topic+scope → same context (TTL: 1h)
+2. **Pipeline output** — same request params → same content (TTL: 24h, with randomization)
 
 ```python
-# api/routes/generation.py
-async def create_generation_job(request: GenerationRequest):
-    if request.num_questions > 10:
-        # Split into sub-jobs
-        sub_size = 10
-        sub_jobs = []
-        for i in range(0, request.num_questions, sub_size):
-            sub_req = request.copy()
-            sub_req.num_questions = min(sub_size, request.num_questions - i)
-            sub_job_id = await firestore.create_job(sub_req, parent_id=job_id)
-            await task_queue.enqueue(sub_job_id)
-            sub_jobs.append(sub_job_id)
-        # Track parent job with sub-job references
-        await firestore.update_job(job_id, sub_jobs=sub_jobs)
-    else:
-        await task_queue.enqueue(job_id)
+# Cache key includes all params that affect output
+cache_key = f"{subject}:{topic}:{difficulty}:{num_questions}:{sorted(game_types)}"
+cache_hash = hashlib.sha256(cache_key.encode()).hexdigest()
 ```
 
-**Complexity:** Medium. Needs parent/child job tracking in Firestore, result aggregation, partial failure handling.
-
-### 3.4 Caching Layer (Future)
-
-For repeated topic/difficulty combinations, cache pipeline results:
-
-```python
-# Cache key: hash(subject, topic, difficulty, num_questions, game_types)
-cache_key = hashlib.sha256(f"{req.subject}:{req.topic}:{req.difficulty}:{req.num_questions}:{sorted(req.game_types)}".encode()).hexdigest()
-
-# Check Firestore cache (TTL: 24h)
-cached = await firestore.get_cache(cache_key)
-if cached:
-    return cached  # Skip entire pipeline
-```
-
-**Best for:** Same teacher generating similar content multiple times, or multiple teachers with same curriculum.
+**Impact:** Skip entire pipeline for repeated requests
+**When:** After user patterns are known from production usage data
 
 ---
 
-## 4. Priority Matrix
+## 5. Priority Matrix (Updated)
 
-| Optimization                   | Effort       | Impact                 | Priority | Status      |
-| ------------------------------ | ------------ | ---------------------- | -------- | ----------- |
-| Formatter `asyncio.gather()`   | Low          | 2-3× formatter speed   | P0       | ✅ Done     |
-| Batch parse retry              | Low          | Fewer full retries     | P0       | ✅ Done     |
-| Cloud Run auto-scaling         | Low (config) | N concurrent users     | P1       | Not started |
-| Cloud Tasks rate limiting      | Low (config) | Quota protection       | P1       | Not started |
-| Parallel batch parsing         | Medium       | 2× parse speed         | P2       | Not started |
-| Request batching (100Q→10×10Q) | Medium       | 10× for large requests | P2       | Not started |
-| Parallel format batches        | Low          | 1.5× per game type     | P3       | Not started |
-| Caching layer                  | Medium       | Skip pipeline entirely | P3       | Not started |
-
----
-
-## 5. Estimated Performance After Optimizations
-
-| Scenario                  | Current | With P0-P1       | With P0-P2      | With All      |
-| ------------------------- | ------- | ---------------- | --------------- | ------------- |
-| 1 user, 10Q, quiz-only    | ~120s   | ~100s            | ~80s            | ~80s          |
-| 1 user, 10Q, 3 game types | ~180s   | ~120s            | ~100s           | ~100s         |
-| 1 user, 100Q, quiz-only   | ~2000s  | ~1700s           | ~200s (batched) | ~200s         |
-| 10 concurrent, 10Q each   | ~12000s | ~120s (parallel) | ~120s           | ~80s (cached) |
-| 10 concurrent, 100Q each  | N/A     | ~2000s           | ~200s           | ~200s         |
-
-**Key insight:** The biggest single improvement is **request batching** (P2) for large requests, and **Cloud Run auto-scaling** (P1) for concurrent users. These are independent and address different bottlenecks.
+| # | Optimization | Effort | Impact | Priority | Status | Depends On |
+|---|---|---|---|---|---|---|
+| 1 | Formatter `asyncio.gather()` | Low | 2-3× formatter | P0 | Done | — |
+| 2 | Batch parse retry + backoff | Low | Fewer retries | P0 | Done | — |
+| 3 | Parallel batch parsing | Low | 2× parse speed | P0 | Done | — |
+| 4 | Code trace truncation | Low | Better parse rate | P0 | Done | — |
+| 5 | Internal gen retry | Low | No pipeline restart | P0 | Done | — |
+| **6** | **AsyncTokenBucket + Semaphore** | **Low-Med** | **Eliminates 429s** | **P1** | **Next** | — |
+| **7** | **Circuit breaker** | **Low** | **Prevents retry storms** | **P1** | **Next** | #6 |
+| 8 | Parallel format batches | Low | 1.5× per game type | P2 | Not started | #6 |
+| 9 | Request batching (100Q→10×10Q) | Medium | 10× large requests | P3 | Not started | #6 |
+| 10 | Cloud Tasks rate limiting | Low (config) | Quota protection | P4 | Deploy phase | — |
+| 11 | Cloud Run auto-scaling | Low (config) | N concurrent users | P4 | Deploy phase | #10 |
+| 12 | Caching layer | Medium | Skip pipeline | P5 | Future | Production data |
 
 ---
 
-## 6. Implementation Roadmap
+## 6. Estimated Performance After Optimizations
+
+| Scenario | Current (M3) | +P1 (rate limit) | +P2 (parallel fmt) | +P3 (batching) | +P4/P5 (deploy) |
+|---|---|---|---|---|---|
+| 1 user, 10Q, quiz | ~90s | ~90s | ~80s | ~80s | ~80s |
+| 1 user, 10Q, 3 games | ~70s | ~70s | ~60s | ~60s | ~60s |
+| 1 user, 30Q, quiz | ~125s (**64% pass**) | ~140s (**~95% pass**) | ~120s | ~120s | ~120s |
+| 1 user, 100Q, quiz | ~2000s | ~2000s | ~1800s | **~200s** | ~200s |
+| 10 concurrent, 10Q | Sequential | Sequential | Sequential | Sequential | **~120s parallel** |
+
+**Key insights:**
+1. **P1 (rate limiter) is the #1 priority** — fixes the 429 reliability issue in `large_30q` (64% → ~95% pass rate)
+2. **P3 (request batching) gives the biggest latency win** for large requests (10× speedup)
+3. **P4 (Cloud Run/Tasks) enables multi-user concurrency** — deferred to deploy phase as per user request
+
+---
+
+## 7. Implementation Roadmap
 
 ```
-Phase 1 (Done): Formatter parallelization + batch parse retry
-  ✅ asyncio.gather() in formatter_node
-  ✅ Retry with backoff in math_agent batch parsing
+Phase 1 (M3 — Done): Within-pipeline parallelism
+  ✅ asyncio.gather() in formatter_node (game types parallel)
+  ✅ asyncio.gather() in _parse_raw_content (batch parsing parallel)
+  ✅ Retry with backoff in _parse_batch, math_agent_node
+  ✅ Code trace truncation, early termination
 
-Phase 2 (M4 - Deploy): Cloud Run config
-  → Set containerConcurrency=1, maxScale=10
-  → Configure Cloud Tasks rate limits
-  → Monitor Vertex AI quota usage
+Phase 2 (Next Sprint): Client-side rate limiting
+  → Create src/services/rate_limiter.py (AsyncTokenBucket + CircuitBreaker)
+  → Wire rate_limited_llm_call() into all 7 LLM call sites
+  → Add LLM_RATE_LIMIT_RPM and LLM_MAX_CONCURRENT to Settings
+  → Test: large_30q should pass >90% (currently 64%)
+  → Parallel format batches in formatter (after rate limiter is stable)
 
-Phase 3 (Post-M4): Request batching
-  → Parent/child job model in Firestore
-  → Split large requests into sub-jobs
-  → Result aggregation endpoint
+Phase 3 (Future Sprint): Request batching
+  → Parent/child job model (Firestore or local)
+  → asyncio.Queue + worker pool for local mode
+  → Split 100Q → 10×10Q with bounded parallelism
+  → Partial failure handling + result aggregation
 
-Phase 4 (Future): Advanced
-  → Parallel batch parsing
-  → Response caching
-  → Quota-aware request scheduling
+Phase 4 (Deploy Phase — deferred):
+  → Cloud Run auto-scaling (containerConcurrency=1, maxScale=10)
+  → Cloud Tasks rate limiting (5/s dispatch, 10 concurrent)
+  → Distributed rate limiter (only if >5 instances needed)
+  → Caching layer (after production usage patterns observed)
 ```
+
+---
+
+## 8. Vertex AI Quota Reference
+
+| Dimension | Default (asia-southeast1) | Our Usage (1 pipeline) | 10 Concurrent | Action Needed |
+|---|---|---|---|---|
+| RPM | 60 | ~7 | ~70 | Request increase to 200 if >15 concurrent |
+| TPM | 1,000,000 | ~56,000 | ~560,000 | Within limits |
+| RPD | 1,500 | ~7 | ~700/day (100 runs) | Within limits |
+
+**Recommendation:** For production, request quota increase to 200 RPM. With the token bucket rate limiter, even the default 60 RPM will work for <=8 concurrent pipelines.
+
+---
+
+## Appendix A: Research Sources
+
+This design was informed by:
+- Vertex AI retry strategy docs (exponential backoff + jitter for 429/5xx)
+- Gemini API rate limits docs (multi-dimensional: RPM, TPM, RPD per project)
+- Published async token-bucket implementations for Python/asyncio
+- LangGraph superstep execution model (fan-out via Send/Command, per-node retries)
+- `asynciolimiter` and `self-limiters` libraries for async rate limiting
+- `tenacity` for async retry with backoff integration
+- AWS/Redis patterns for distributed rate limiting (token bucket + sliding window)
+- LLM load testing best practices (k6 ramp/spike/soak profiles)
+- Portkey.ai circuit breaker patterns for LLM applications
