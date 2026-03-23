@@ -151,17 +151,18 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [ ] Extract ra separate `templates/registry.py` module (optional refactor)
 - [x] Test generation mỗi loại (quiz, flashcard, fill_blank) ✅ Verified 2026-03-11 (`test_week2_local_session_2026_03_11.ipynb`)
 
-#### T3.1: Code Execution cho STEM (1 ngày)
+#### T3.1: Code Execution cho STEM (1 ngày) ✅ Implemented 2026-03-20
 
-- [ ] Enable Code Execution trong Gemini config
-- [ ] Update Math Agent prompt yêu cầu dùng Python cho calculations
+- [x] Enable Code Execution trong Gemini config — `bind_tools([{"code_execution": {}}])` ✅
+- [x] Update Math Agent prompt yêu cầu dùng Python cho calculations ✅
+- [x] Two-phase approach: Phase 1 code exec + Phase 2 structured parsing ✅
 - [ ] Test với 20 câu toán/lý/hóa từ golden set
 - [ ] Handle execution timeout gracefully
 
 #### T3.2: Pydantic Schemas Finalize (0.5 ngày) ✅ Implemented 2026-03-09
 
 - [x] All request/response/game content schemas implemented trong `src/api/schemas/` ✅
-- [ ] Generate OpenAPI spec
+- [x] Generate OpenAPI spec → `docs/openapi.json` ✅ 2026-03-20 (10 endpoints)
 - [ ] Review với Game Client team (async meeting nếu cần)
 - [ ] Confirm schema compatibility
 
@@ -171,11 +172,12 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 
 ### Tuần 3: Production Hardening (T4.x)
 
-#### T4.1: API Hoàn thiện (1 ngày)
+#### T4.1: API Hoàn thiện (1 ngày) ✅ Implemented 2026-03-20
 
-- [ ] GET `/api/v1/users/{user_id}/documents` — list user docs
-- [ ] GET `/api/v1/game-types` — list supported types với schemas
-- [ ] Error handling thống nhất (HTTPException với detail rõ ràng)
+- [x] GET `/api/v1/users/{user_id}/documents` — list user docs ✅
+- [x] POST `/api/v1/users/{user_id}/documents/upload` — upload user docs ✅
+- [x] GET `/api/v1/game-types` — list supported types với schemas ✅
+- [x] Error handling thống nhất — `src/api/errors.py` (validation + unhandled) ✅
 - [ ] Timeout handling for polling endpoints
 
 #### T4.2: Accuracy Testing (1.5 ngày)
@@ -192,9 +194,11 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [ ] Identify bottlenecks, tune nếu cần
 - [ ] Test Cloud Tasks queue behavior under load
 
-#### T4.4: Deployment & IAM (1 ngày)
+#### T4.4: Deployment & IAM (1 ngày) ✅ Partially Implemented 2026-03-20
 
-- [ ] Dockerfile optimized (multi-stage, slim base)
+- [x] Dockerfile optimized (multi-stage, slim base) ✅
+- [x] `.dockerignore` configured ✅
+- [x] Deploy script `scripts/deploy.sh` ✅
 - [ ] Cloud Run deploy với `--no-allow-unauthenticated`
 - [ ] Grant upstream service account `roles/run.invoker`
 - [ ] Grant Cloud Tasks service account invoke permission

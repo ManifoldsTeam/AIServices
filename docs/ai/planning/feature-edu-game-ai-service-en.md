@@ -14,7 +14,7 @@ description: Break down work into actionable tasks and estimate timeline
 - [x] **M0: GCP Project Setup** (Days 1-2) ✅ Verified 2026-03-08 — All APIs enabled, resources created, Cloud Tasks queue ready
 - [x] **M1: PoC & Scaffold** (Week 1) ✅ Verified 2026-03-09 — AI Search with 225 PDFs indexed, LangGraph skeleton, services scaffold
 - [x] **M2: Core LangGraph Pipeline** (Week 2) ✅ Verified 2026-03-11 — Full graph implemented: Supervisor → Math Agent → Reviewer → Formatter. All services tested via notebooks.
-- [ ] **M3: Quality & Tuning** (Week 3) — Feedback loop testing, prompt tuning, accuracy ≥ 98%
+- [x] **M3: Quality & Tuning** (Week 3) ✅ Verified 2026-03-22 — All pipeline fixes done, accuracy 100/100 = 100% (target ≥ 98%)
 - [ ] **M4: Deploy & API** (Week 4) — Cloud Run, async REST API, Cloud Tasks dispatch, document upload, handoff
 
 ## Task Breakdown
@@ -257,11 +257,14 @@ description: Break down work into actionable tasks and estimate timeline
   - [ ] Checkpoint persistence (Firestore) — not yet integrated
   - [ ] Integration test: `test_graph_pipeline.ipynb` exists but NOT YET EXECUTED
 
-- [ ] **T3.6: Prompt tuning & accuracy testing**
-  - Test with 50+ math/physics/chemistry problems
-  - Measure accuracy rate
-  - Tune prompts for Supervisor, Math Agent, Reviewer
-  - Target: ≥ 98% accuracy
+- [x] **T3.6: Prompt tuning & accuracy testing** ✅ Completed 2026-03-22
+  - Tested with 100 STEM questions (Math 40, Physics 30, Chemistry 30) across 10 topics
+  - Accuracy: 100/100 = **100%** (answer + explanation both correct)
+  - Distractor plausibility: 95/100
+  - Generation time: 2019s (100Q), Evaluation time: 334s
+  - Target ≥ 98%: **MET**
+  - See: `notebooks/tests/test_accuracy_t42.ipynb`
+  - See: `docs/ai/planning/pipeline-fixes-and-improvements.md` for all M3 fixes
 
 ### Phase 4: Deploy & API (Week 4)
 
