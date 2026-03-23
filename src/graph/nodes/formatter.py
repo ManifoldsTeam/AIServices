@@ -9,6 +9,7 @@ The Formatter:
 Uses Gemini Flash with structured output for reliable formatting.
 """
 
+import asyncio
 import time
 import uuid
 from datetime import datetime
@@ -18,6 +19,12 @@ from langchain_google_vertexai import ChatVertexAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
+from src.config.constants import (
+    FORMATTER_BATCH_SIZE,
+    STRUCTURED_MAX_TOKENS,
+    STRUCTURED_TEMPERATURE,
+)
+
 from src.graph.state import AgentState
 from src.api.schemas import (
     GameType,
@@ -26,6 +33,7 @@ from src.api.schemas import (
     Flashcard,
     FillBlankQuestion,
     BlankSlot,
+    GameContentMap,
     GameContentResponse,
     GenerationMetadata,
 )
@@ -162,31 +170,56 @@ def _get_llm() -> ChatVertexAI:
     """Get Gemini Flash LLM for formatting."""
     settings = get_settings()
     return ChatVertexAI(
-        model_name="gemini-1.5-flash",  # 2.0 not available in asia-southeast1
+        model_name=settings.generation_model,
         project=settings.gcp_project_id,
-        location=settings.gcp_location,
-        temperature=0.3,  # Some creativity in options
-        max_output_tokens=8192,
+        location=settings.generation_model_location or settings.gcp_location,
+        temperature=STRUCTURED_TEMPERATURE,
+        max_output_tokens=STRUCTURED_MAX_TOKENS,
     )
 
 
-async def _format_quizzes(items: list[dict], llm: ChatVertexAI) -> list[dict]:
-    """Format content items into quiz questions."""
+async def _format_quizzes(items: list[dict], llm: ChatVertexAI) -> list[QuizQuestion]:
+    """Format content items into typed QuizQuestion models with batch parsing."""
     import json
 
     structured_llm = llm.with_structured_output(QuizBatch)
-    chain = QUIZ_PROMPT | structured_llm
+    all_quiz_outputs: list[tuple[QuizOutput, dict]] = []
 
-    result: QuizBatch = await chain.ainvoke(
-        {
-            "num_items": len(items),
-            "items_json": json.dumps(items, ensure_ascii=False, indent=2),
-        }
-    )
+    # Batch items to avoid structured output returning None
+    for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
+        batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
+        chain = QUIZ_PROMPT | structured_llm
 
-    quizzes = []
-    for i, q in enumerate(result.questions):
-        item = items[i] if i < len(items) else items[-1]
+        result: QuizBatch | None = await chain.ainvoke(
+            {
+                "num_items": len(batch_items),
+                "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
+            }
+        )
+
+        if result is not None and isinstance(result, QuizBatch):
+            if len(result.questions) != len(batch_items):
+                logger.warning(
+                    "formatter_quiz_count_mismatch",
+                    expected=len(batch_items),
+                    got=len(result.questions),
+                    batch_start=batch_start,
+                )
+            for i, q in enumerate(result.questions):
+                source_item = (
+                    batch_items[i] if i < len(batch_items) else batch_items[-1]
+                )
+                all_quiz_outputs.append((q, source_item))
+            logger.info(
+                "formatter_quiz_batch_parsed",
+                batch_start=batch_start,
+                items=len(result.questions),
+            )
+        else:
+            logger.warning("formatter_quiz_batch_failed", batch_start=batch_start)
+
+    quizzes: list[QuizQuestion] = []
+    for q, item in all_quiz_outputs:
         quiz = QuizQuestion(
             id=str(uuid.uuid4()),
             question=q.question,
@@ -198,62 +231,112 @@ async def _format_quizzes(items: list[dict], llm: ChatVertexAI) -> list[dict]:
             ],
             correct_answer_index=q.correct_index,
             explanation=q.explanation,
-            difficulty=item.get("difficulty", "medium"),
+            difficulty=item.get("difficulty", "comprehension"),
             topic=item.get("topic", ""),
             computation_trace=item.get("computation_trace"),
         )
-        quizzes.append(quiz.model_dump())
+        quizzes.append(quiz)
 
     return quizzes
 
 
-async def _format_flashcards(items: list[dict], llm: ChatVertexAI) -> list[dict]:
-    """Format content items into flashcards."""
+async def _format_flashcards(items: list[dict], llm: ChatVertexAI) -> list[Flashcard]:
+    """Format content items into typed Flashcard models with batch parsing."""
     import json
 
     structured_llm = llm.with_structured_output(FlashcardBatch)
-    chain = FLASHCARD_PROMPT | structured_llm
+    all_fc_outputs: list[tuple[FlashcardOutput, dict]] = []
 
-    result: FlashcardBatch = await chain.ainvoke(
-        {
-            "num_items": len(items),
-            "items_json": json.dumps(items, ensure_ascii=False, indent=2),
-        }
-    )
+    for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
+        batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
+        chain = FLASHCARD_PROMPT | structured_llm
 
-    flashcards = []
-    for i, f in enumerate(result.cards):
-        item = items[i] if i < len(items) else items[-1]
+        result: FlashcardBatch | None = await chain.ainvoke(
+            {
+                "num_items": len(batch_items),
+                "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
+            }
+        )
+
+        if result is not None and isinstance(result, FlashcardBatch):
+            if len(result.cards) != len(batch_items):
+                logger.warning(
+                    "formatter_flashcard_count_mismatch",
+                    expected=len(batch_items),
+                    got=len(result.cards),
+                    batch_start=batch_start,
+                )
+            for i, f in enumerate(result.cards):
+                source_item = (
+                    batch_items[i] if i < len(batch_items) else batch_items[-1]
+                )
+                all_fc_outputs.append((f, source_item))
+            logger.info(
+                "formatter_flashcard_batch_parsed",
+                batch_start=batch_start,
+                items=len(result.cards),
+            )
+        else:
+            logger.warning("formatter_flashcard_batch_failed", batch_start=batch_start)
+
+    flashcards: list[Flashcard] = []
+    for f, item in all_fc_outputs:
         flashcard = Flashcard(
             id=str(uuid.uuid4()),
             front=f.front,
             back=f.back,
             topic=item.get("topic", ""),
-            difficulty=item.get("difficulty", "medium"),
+            difficulty=item.get("difficulty", "comprehension"),
             tags=f.tags,
         )
-        flashcards.append(flashcard.model_dump())
+        flashcards.append(flashcard)
 
     return flashcards
 
 
-async def _format_fill_blanks(items: list[dict], llm: ChatVertexAI) -> list[dict]:
-    """Format content items into fill-in-blank questions."""
+async def _format_fill_blanks(
+    items: list[dict], llm: ChatVertexAI
+) -> list[FillBlankQuestion]:
+    """Format content items into typed FillBlankQuestion models with batch parsing."""
     import json
 
     structured_llm = llm.with_structured_output(FillBlankBatch)
-    chain = FILL_BLANK_PROMPT | structured_llm
+    all_fb_outputs: list[tuple[FillBlankOutput, dict]] = []
 
-    result: FillBlankBatch = await chain.ainvoke(
-        {
-            "num_items": len(items),
-            "items_json": json.dumps(items, ensure_ascii=False, indent=2),
-        }
-    )
+    for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
+        batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
+        chain = FILL_BLANK_PROMPT | structured_llm
 
-    fill_blanks = []
-    for i, fb in enumerate(result.questions):
-        item = items[i] if i < len(items) else items[-1]
+        result: FillBlankBatch | None = await chain.ainvoke(
+            {
+                "num_items": len(batch_items),
+                "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
+            }
+        )
+
+        if result is not None and isinstance(result, FillBlankBatch):
+            if len(result.questions) != len(batch_items):
+                logger.warning(
+                    "formatter_fill_blank_count_mismatch",
+                    expected=len(batch_items),
+                    got=len(result.questions),
+                    batch_start=batch_start,
+                )
+            for i, fb in enumerate(result.questions):
+                source_item = (
+                    batch_items[i] if i < len(batch_items) else batch_items[-1]
+                )
+                all_fb_outputs.append((fb, source_item))
+            logger.info(
+                "formatter_fill_blank_batch_parsed",
+                batch_start=batch_start,
+                items=len(result.questions),
+            )
+        else:
+            logger.warning("formatter_fill_blank_batch_failed", batch_start=batch_start)
+
+    fill_blanks: list[FillBlankQuestion] = []
+    for fb, item in all_fb_outputs:
         blanks = [
             BlankSlot(
                 position=j,
@@ -267,10 +350,10 @@ async def _format_fill_blanks(items: list[dict], llm: ChatVertexAI) -> list[dict
             template=fb.template,
             blanks=blanks,
             explanation=fb.explanation,
-            difficulty=item.get("difficulty", "medium"),
+            difficulty=item.get("difficulty", "comprehension"),
             topic=item.get("topic", ""),
         )
-        fill_blanks.append(fill_blank.model_dump())
+        fill_blanks.append(fill_blank)
 
     return fill_blanks
 
@@ -290,6 +373,15 @@ async def formatter_node(state: AgentState) -> dict:
     reviewed_items = state.get("reviewed_items", [])
     rejected_items = state.get("rejected_items", [])
 
+    # Trim to requested count (overshoot buffer may produce extras)
+    if len(reviewed_items) > request.num_questions:
+        logger.info(
+            "formatter_trimming",
+            before=len(reviewed_items),
+            after=request.num_questions,
+        )
+        reviewed_items = reviewed_items[: request.num_questions]
+
     start_time = time.time()
 
     logger.info(
@@ -301,12 +393,11 @@ async def formatter_node(state: AgentState) -> dict:
 
     if not reviewed_items:
         logger.warning("formatter_no_items")
-        # Return empty response
         final_output = GameContentResponse(
             request_id=str(uuid.uuid4()),
             user_id=request.user_id,
             generated_at=datetime.utcnow(),
-            content={gt.value: [] for gt in request.game_types},
+            content=GameContentMap(),
             metadata=GenerationMetadata(
                 total_generated=0,
                 total_passed_review=0,
@@ -319,30 +410,44 @@ async def formatter_node(state: AgentState) -> dict:
         return {"final_output": final_output}
 
     llm = _get_llm()
-    content = {}
+    quiz_items: list[QuizQuestion] = []
+    flashcard_items: list[Flashcard] = []
+    fill_blank_items: list[FillBlankQuestion] = []
 
-    # Format for each requested game type
-    for game_type in request.game_types:
+    # Format all requested game types in parallel (they are independent)
+    async def _safe_format(game_type: GameType):
         try:
             if game_type == GameType.QUIZ:
-                content[game_type.value] = await _format_quizzes(reviewed_items, llm)
+                return game_type, await _format_quizzes(reviewed_items, llm)
             elif game_type == GameType.FLASHCARD:
-                content[game_type.value] = await _format_flashcards(reviewed_items, llm)
+                return game_type, await _format_flashcards(reviewed_items, llm)
             elif game_type == GameType.FILL_BLANK:
-                content[game_type.value] = await _format_fill_blanks(
-                    reviewed_items, llm
-                )
+                return game_type, await _format_fill_blanks(reviewed_items, llm)
             else:
                 logger.warning("formatter_unsupported_type", game_type=game_type.value)
-                content[game_type.value] = []
-
+                return game_type, []
         except Exception as e:
             logger.error(
                 "formatter_type_failed",
                 game_type=game_type.value,
                 error=str(e),
             )
-            content[game_type.value] = []
+            return game_type, []
+
+    results = await asyncio.gather(*[_safe_format(gt) for gt in request.game_types])
+    for game_type, items in results:
+        if game_type == GameType.QUIZ:
+            quiz_items = items
+        elif game_type == GameType.FLASHCARD:
+            flashcard_items = items
+        elif game_type == GameType.FILL_BLANK:
+            fill_blank_items = items
+
+    content = GameContentMap(
+        quiz=quiz_items,
+        flashcard=flashcard_items,
+        fill_blank=fill_blank_items,
+    )
 
     generation_time = time.time() - start_time
 
@@ -361,9 +466,13 @@ async def formatter_node(state: AgentState) -> dict:
         ),
     )
 
+    total_items = len(quiz_items) + len(flashcard_items) + len(fill_blank_items)
     logger.info(
         "formatter_completed",
-        game_types={gt: len(items) for gt, items in content.items()},
+        total_items=total_items,
+        quiz=len(quiz_items),
+        flashcard=len(flashcard_items),
+        fill_blank=len(fill_blank_items),
         generation_time=generation_time,
     )
 

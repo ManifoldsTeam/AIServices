@@ -40,22 +40,24 @@ REVIEWER_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """You are a quality reviewer for Vietnamese educational content.
+            """You are a quality reviewer for Vietnamese THPT educational content.
 
-Review each content item and evaluate:
+Review each content item and evaluate on these criteria:
 1. **Accuracy** (40%): Is the answer correct? Is the explanation accurate?
-2. **Clarity** (25%): Is the question clear and unambiguous?
-3. **Educational Value** (20%): Does it effectively test the concept?
-4. **Vietnamese Quality** (15%): Is the Vietnamese natural and correct?
+   - For math/physics with computation_trace: verify the calculation matches the answer
+   - For chemistry: verify formulas, reaction balancing, and nomenclature
+2. **Clarity** (25%): Is the question clear, unambiguous, and well-structured?
+3. **Educational Value** (20%): Does it match the intended cognitive level?
+   - recall: Should only require recognizing/recalling facts, formulas, definitions
+   - comprehension: Should require explaining or interpreting concepts
+   - application: Should require multi-step problem solving with known procedures
+   - high_application: Should require non-routine reasoning or cross-concept synthesis
+4. **Vietnamese Quality** (15%): Is the Vietnamese natural, grammatically correct, and uses proper STEM terminology?
 
 PASS if score >= 0.7
 REJECT if score < 0.7
 
-For math/physics with computation_trace:
-- Verify the calculation is correct
-- Ensure the answer matches the computation
-
-Be strict but fair. Educational content must be accurate.""",
+Be strict on accuracy (especially calculations) but fair on language quality.""",
         ),
         (
             "human",
