@@ -1,8 +1,15 @@
-"""Response schemas for API endpoints."""
+"""Response schemas for API endpoints.
+
+Rule: NEVER use untyped containers (dict[str, list[dict]], Any, etc.) in
+response models.  Every field must carry an explicit Pydantic type so that
+OpenAPI codegen, client validation, and IDE auto-complete work correctly.
+"""
 
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field
+
+from src.api.schemas.game_content import GameContentMap
 
 
 class JobStatus(str, Enum):
@@ -34,11 +41,14 @@ class GameContentResponse(BaseModel):
     Returned by GET /api/v1/generations/{request_id} when status is completed.
     """
 
+    contract_version: str = Field(
+        default="1.0.0", description="API contract version (semver)"
+    )
     request_id: str
     user_id: str
     generated_at: datetime
-    content: dict[str, list[dict]] = Field(
-        ..., description="Game content by type: { 'quiz': [...], 'flashcard': [...] }"
+    content: GameContentMap = Field(
+        ..., description="Typed game content grouped by game type"
     )
     metadata: GenerationMetadata
 
