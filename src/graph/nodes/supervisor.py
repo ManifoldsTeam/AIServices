@@ -17,6 +17,7 @@ from langchain_core.output_parsers import StrOutputParser
 from src.graph.state import AgentState
 from src.config import get_settings
 from src.services.llm import get_review_llm
+from src.services.rate_limiter import rate_limited_llm_call
 
 logger = structlog.get_logger(__name__)
 
@@ -92,15 +93,17 @@ async def supervisor_node(state: AgentState) -> dict:
     chain = SUPERVISOR_PROMPT | llm | StrOutputParser()
 
     try:
-        content_type = await chain.ainvoke(
-            {
-                "topic": request.topic or "General",
-                "doc_scope": request.doc_scope.value,
-                "game_types": ", ".join([gt.value for gt in request.game_types]),
-                "difficulty": request.difficulty.value,
-                "language": request.language,
-                "context_preview": context_preview,
-            }
+        content_type = await rate_limited_llm_call(
+            chain.ainvoke(
+                {
+                    "topic": request.topic or "General",
+                    "doc_scope": request.doc_scope.value,
+                    "game_types": ", ".join([gt.value for gt in request.game_types]),
+                    "difficulty": request.difficulty.value,
+                    "language": request.language,
+                    "context_preview": context_preview,
+                }
+            )
         )
         content_type = content_type.strip().lower()
 

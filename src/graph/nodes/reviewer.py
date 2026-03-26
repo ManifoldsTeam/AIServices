@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from src.graph.state import AgentState, MAX_REVIEW_ITERATIONS
 from src.config import get_settings
 from src.services.llm import get_review_llm
+from src.services.rate_limiter import rate_limited_llm_call
 
 logger = structlog.get_logger(__name__)
 
@@ -120,11 +121,13 @@ async def reviewer_node(state: AgentState) -> dict:
     chain = REVIEWER_PROMPT | structured_llm
 
     try:
-        result: ReviewBatch = await chain.ainvoke(
-            {
-                "num_items": len(content_items),
-                "items_json": items_json,
-            }
+        result: ReviewBatch = await rate_limited_llm_call(
+            chain.ainvoke(
+                {
+                    "num_items": len(content_items),
+                    "items_json": items_json,
+                }
+            )
         )
 
         reviewed_items = []

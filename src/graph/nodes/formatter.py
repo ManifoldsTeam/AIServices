@@ -24,6 +24,7 @@ from src.config.constants import (
     STRUCTURED_MAX_TOKENS,
     STRUCTURED_TEMPERATURE,
 )
+from src.services.rate_limiter import rate_limited_llm_call
 
 from src.graph.state import AgentState
 from src.api.schemas import (
@@ -190,11 +191,13 @@ async def _format_quizzes(items: list[dict], llm: ChatVertexAI) -> list[QuizQues
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
         chain = QUIZ_PROMPT | structured_llm
 
-        result: QuizBatch | None = await chain.ainvoke(
-            {
-                "num_items": len(batch_items),
-                "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
-            }
+        result: QuizBatch | None = await rate_limited_llm_call(
+            chain.ainvoke(
+                {
+                    "num_items": len(batch_items),
+                    "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
+                }
+            )
         )
 
         if result is not None and isinstance(result, QuizBatch):
@@ -251,11 +254,13 @@ async def _format_flashcards(items: list[dict], llm: ChatVertexAI) -> list[Flash
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
         chain = FLASHCARD_PROMPT | structured_llm
 
-        result: FlashcardBatch | None = await chain.ainvoke(
-            {
-                "num_items": len(batch_items),
-                "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
-            }
+        result: FlashcardBatch | None = await rate_limited_llm_call(
+            chain.ainvoke(
+                {
+                    "num_items": len(batch_items),
+                    "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
+                }
+            )
         )
 
         if result is not None and isinstance(result, FlashcardBatch):
@@ -307,11 +312,13 @@ async def _format_fill_blanks(
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
         chain = FILL_BLANK_PROMPT | structured_llm
 
-        result: FillBlankBatch | None = await chain.ainvoke(
-            {
-                "num_items": len(batch_items),
-                "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
-            }
+        result: FillBlankBatch | None = await rate_limited_llm_call(
+            chain.ainvoke(
+                {
+                    "num_items": len(batch_items),
+                    "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
+                }
+            )
         )
 
         if result is not None and isinstance(result, FillBlankBatch):

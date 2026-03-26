@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     cloud_tasks_location: str = "asia-southeast1"
     cloud_tasks_invoker_service_account: str | None = None
 
+    # --- LLM Rate Limiting ---
+    llm_rate_limit_rpm: int = 60  # Vertex AI default quota
+    llm_max_concurrent: int = 10  # Max concurrent LLM calls per process
+
     # --- Cloud Run ---
     cloud_run_base_url: str | None = None
 

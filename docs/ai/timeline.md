@@ -65,3 +65,34 @@
 - [notebooks/exploration/download_sbt_pdfs.ipynb](notebooks/exploration/download_sbt_pdfs.ipynb) — notebook tải SBT từ loigiaihay.com
 - [notebooks/tests/test_week2_local_session_2026_03_11.ipynb](notebooks/tests/test_week2_local_session_2026_03_11.ipynb) — fix hardcoded bucket name trong mock
 - [docs/ai/planning/refactor-bucket-structure-plan.md](docs/ai/planning/refactor-bucket-structure-plan.md) — plan chi tiết 3 decisions + scope of impact
+
+---
+
+### 2026-03-26 — P1: Client-Side Rate Limiting cho LLM Calls
+
+**Vấn đề:** Test `large_30q` chỉ đạt 64.1% pass rate do lỗi 429 (rate limit exceeded). Không có cơ chế kiểm soát tốc độ gọi LLM phía client — batch parsing song song phát ra 4+ lệnh gọi đồng thời vượt quota 60 RPM.
+
+**Nguyên nhân:** Tất cả 8 điểm gọi LLM (`.ainvoke()`) trong pipeline đều gọi trực tiếp Vertex AI API mà không có rate limiting hay concurrency cap.
+
+**Hành động:**
+
+1. Tạo `src/services/rate_limiter.py` — `AsyncTokenBucket` (token bucket async-safe), `CircuitBreaker` (trip sau 5 lỗi 429 liên tiếp, cooldown 60s), `rate_limited_llm_call()` wrapper
+2. Thêm config `llm_rate_limit_rpm` (default 60) và `llm_max_concurrent` (default 10) vào `Settings`
+3. Wrap `rate_limited_llm_call()` vào 8 điểm gọi LLM: `formatter.py` ×3, `math_agent.py` ×3, `supervisor.py` ×1, `reviewer.py` ×1
+4. Lazy initialization singletons — đọc config từ `get_settings()` khi gọi lần đầu
+
+**Kết quả:**
+
+- ✅ Module rate_limiter.py tạo thành công, import OK
+- ✅ 8/8 call sites wrapped với rate_limited_llm_call()
+- ✅ Config env-configurable qua `LLM_RATE_LIMIT_RPM` và `LLM_MAX_CONCURRENT`
+- ⏳ Cần test với `large_30q` để xác nhận lỗi 429 biến mất
+
+**References:**
+
+- [src/services/rate_limiter.py](src/services/rate_limiter.py) — module mới: AsyncTokenBucket, CircuitBreaker, rate_limited_llm_call()
+- [src/config/settings.py](src/config/settings.py) — thêm `llm_rate_limit_rpm`, `llm_max_concurrent`
+- [src/graph/nodes/formatter.py](src/graph/nodes/formatter.py) — wrap 3 chain.ainvoke() calls
+- [src/graph/nodes/math_agent.py](src/graph/nodes/math_agent.py) — wrap 3 ainvoke() calls (code_exec, parse batch, parse single)
+- [src/graph/nodes/supervisor.py](src/graph/nodes/supervisor.py) — wrap chain.ainvoke()
+- [src/graph/nodes/reviewer.py](src/graph/nodes/reviewer.py) — wrap chain.ainvoke()
