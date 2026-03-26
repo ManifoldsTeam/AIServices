@@ -1,7 +1,8 @@
-# Đề xuất Công nghệ Web Game và Schema (để thống nhất với GameService)
+# Đề xuất Công nghệ Web Game và Schema — Contract do AI Service quyết định
 
-> Cập nhật: 2026-03-13
-> Mục tiêu: Bản nháp để thảo luận và chốt contract giữa AI Service và GameService
+> Cập nhật: 2026-03-20
+> Trạng thái: **GameService ủy quyền toàn bộ quyết định API contract cho AI Service**
+> Mục tiêu: Contract chính thức giữa AI Service ↔ GameService
 
 ## 1. Phạm vi
 
@@ -68,11 +69,18 @@ Với mục tiêu Week 3 và loại game hiện tại:
 
 ## 3. Khoảng trống contract hiện tại (AI Service)
 
-Quan sát từ schema hiện có:
+~~Quan sát từ schema hiện có:~~
 
-- Các trường content trong response còn lỏng kiểu (`dict[str, list[dict]]`), giảm độ an toàn khi codegen client.
-- Chưa có `contract_version` rõ ràng trong payload generation.
-- Chưa có discriminated union cho game items đa hình.
+- ~~Các trường content trong response còn lỏng kiểu (`dict[str, list[dict]]`), giảm độ an toàn khi codegen client.~~
+- ~~Chưa có `contract_version` rõ ràng trong payload generation.~~
+- ~~Chưa có discriminated union cho game items đa hình.~~
+
+> **✅ Đã xử lý (2026-03-20):**
+>
+> - `GameContentResponse.content` đã chuyển từ `dict[str, list[dict]]` → `GameContentMap` (typed model, mỗi game type 1 field riêng).
+> - Thêm `contract_version: str = "1.0.0"` vào `GameContentResponse`.
+> - Formatter đã trả về Pydantic model (`list[QuizQuestion]`, `list[Flashcard]`, `list[FillBlankQuestion]`) thay vì `list[dict]`.
+> - Toàn bộ pipeline sử dụng typed model end-to-end.
 
 ## 4. Đề xuất chiến lược contract
 
@@ -166,29 +174,58 @@ Field khuyến nghị:
 
 ## 8. Checklist thảo luận với GameService
 
-1. Chốt engine cho frontend V1:
+> **Lưu ý**: GameService đã ủy quyền AI Service toàn quyền quyết định contract.
+> Các mục dưới đây chuyển thành quyết định nội bộ AI Service.
 
-- Phaser (đề xuất) hoặc stack khác theo nhu cầu GameService.
+1. ~~Chốt engine cho frontend V1:~~
 
-2. Chốt tên discriminator:
+- Khuyến nghị Phaser, nhưng là quyết định của GameService.
 
-- `type` hay `game_type` ở cấp item.
+2. [x] Chốt tên discriminator:
 
-3. Chốt field bắt buộc và field optional cho từng game type.
+- Sử dụng tên field của `GameContentMap` (`quiz`, `flashcard`, `fill_blank`). Không cần discriminator ở cấp item vì mỗi game type là 1 list riêng biệt.
+
+3. [x] Chốt field bắt buộc và field optional cho từng game type.
+
+- Xem `GameContentMap`, `QuizQuestion`, `Flashcard`, `FillBlankQuestion` trong `src/api/schemas/game_content.py`.
+
 4. Chốt error contract:
 
 - `code`, `message`, `request_id`, `retryable`, `details`.
 
-5. Chốt chính sách version/deprecation và quy trình rollout.
+5. [x] Chốt chính sách version/deprecation.
+
+- `contract_version` ở top-level response (semver).
+
 6. Chốt endpoint capability:
 
 - `GET /api/v1/game-types` trả về danh sách type + schema version + ràng buộc.
 
-## 9. Bước tiếp theo
+## 9. Quy tắc code — tránh triển khai pattern dễ break
+
+> **Rule bắt buộc** — áp dụng cho toàn bộ codebase AI Service.
+
+1. **Không dùng `dict[str, Any]`, `dict[str, list[dict]]`, hoặc `Any`** trong request/response model.
+   - Mọi API payload phải có Pydantic model cụ thể.
+   - Vi phạm → reject PR.
+
+2. **Không trả về `.model_dump()` sớm** khi data còn flow trong pipeline.
+   - Giữ Pydantic model cho đến khi serialize ra API/Firestore.
+   - Chỉ gọi `.model_dump(mode="json")` ở boundary cuối cùng (API response, Firestore write).
+
+3. **Mọi game type mới phải có model riêng** + thêm field vào `GameContentMap`.
+   - Không mở rộng bằng cách nhét vào dict.
+
+4. **`contract_version` phải tăng** khi thêm/sửa field trong response.
+   - Minor: thêm field optional.
+   - Major: đổi/xóa field, đổi cấu trúc.
+
+## 10. Bước tiếp theo
 
 - AI Service:
-  - Siết chặt typing của response trong Pydantic.
-  - Generate OpenAPI và công bố ví dụ schema.
+  - ✅ Đã siết chặt typing response + formatter (2026-03-20).
+  - Generate OpenAPI spec từ Pydantic models.
+  - Triển khai error contract chuẩn.
 - GameService:
   - Validate payload có phù hợp runtime/rendering phía game không.
   - Chốt nhu cầu dữ liệu UI cho từng game type.

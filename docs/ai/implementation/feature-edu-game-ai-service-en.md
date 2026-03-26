@@ -282,7 +282,7 @@ uvicorn src.main:app --reload --port 8000
 
 **How is the code organized?**
 
-> **Status:** Core pipeline + all services implemented. API routes + deployment pending.
+> **Status:** Core pipeline + all services implemented. API routes + deployment ⏸️ DEFERRED (will be done after all content Pillars are complete).
 
 ```
 src/

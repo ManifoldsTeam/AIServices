@@ -1,0 +1,1109 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Edu Game AI Service",
+    "description": "Async educational game content generation service",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "description": "Simple liveness probe endpoint.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Check Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/generate": {
+      "post": {
+        "tags": [
+          "generation"
+        ],
+        "summary": "Create Generation Job",
+        "description": "Create job record and enqueue Cloud Task for async execution.",
+        "operationId": "create_generation_job_api_v1_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/generations/{request_id}": {
+      "get": {
+        "tags": [
+          "generation"
+        ],
+        "summary": "Get Generation Job",
+        "description": "Poll generation status/result by request id.",
+        "operationId": "get_generation_job_api_v1_generations__request_id__get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game-types": {
+      "get": {
+        "tags": [
+          "generation"
+        ],
+        "summary": "List Game Types",
+        "description": "List supported game types with their difficulty levels.\n\nUsed by Game Client to discover available content formats.",
+        "operationId": "list_game_types_api_v1_game_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Game Types Api V1 Game Types Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/documents/upload": {
+      "post": {
+        "tags": [
+          "admin-documents"
+        ],
+        "summary": "Upload System Document",
+        "description": "Upload a system-scoped document and trigger Vertex AI Search import.",
+        "operationId": "upload_system_document_api_v1_admin_documents_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_system_document_api_v1_admin_documents_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/documents": {
+      "get": {
+        "tags": [
+          "admin-documents"
+        ],
+        "summary": "List System Document Records",
+        "description": "List all system documents from Firestore tracking records.",
+        "operationId": "list_system_document_records_api_v1_admin_documents_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/documents/{doc_id}": {
+      "delete": {
+        "tags": [
+          "admin-documents"
+        ],
+        "summary": "Delete System Document",
+        "description": "Delete a system document from GCS and Firestore tracking.",
+        "operationId": "delete_system_document_api_v1_admin_documents__doc_id__delete",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/execute-generation/{request_id}": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Execute Generation",
+        "description": "Execute LangGraph pipeline for a queued generation job.",
+        "operationId": "execute_generation_internal_execute_generation__request_id__post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "x-cloudtasks-taskname",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cloudtasks-Taskname"
+            }
+          },
+          {
+            "name": "x-cloudtasks-queuename",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cloudtasks-Queuename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Execute Generation Internal Execute Generation  Request Id  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/documents": {
+      "get": {
+        "tags": [
+          "user-documents"
+        ],
+        "summary": "List User Documents",
+        "description": "List documents uploaded by a specific user.",
+        "operationId": "list_user_documents_api_v1_users__user_id__documents_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/documents/upload": {
+      "post": {
+        "tags": [
+          "user-documents"
+        ],
+        "summary": "Upload User Document",
+        "description": "Upload a user-scoped document and trigger Vertex AI Search import.",
+        "operationId": "upload_user_document_api_v1_users__user_id__documents_upload_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_user_document_api_v1_users__user_id__documents_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BlankSlot": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "Position of blank in template (0-indexed)"
+          },
+          "correct_answer": {
+            "type": "string",
+            "title": "Correct Answer"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "correct_answer"
+        ],
+        "title": "BlankSlot",
+        "description": "A blank slot in a fill-in-the-blank question."
+      },
+      "Body_upload_system_document_api_v1_admin_documents_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "subject"
+        ],
+        "title": "Body_upload_system_document_api_v1_admin_documents_upload_post"
+      },
+      "Body_upload_user_document_api_v1_users__user_id__documents_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_user_document_api_v1_users__user_id__documents_upload_post"
+      },
+      "DifficultyLevel": {
+        "type": "string",
+        "enum": [
+          "easy",
+          "medium",
+          "hard"
+        ],
+        "title": "DifficultyLevel",
+        "description": "Question difficulty levels."
+      },
+      "DocScope": {
+        "type": "string",
+        "enum": [
+          "user",
+          "system",
+          "all"
+        ],
+        "title": "DocScope",
+        "description": "Document scope for generation requests.\n\n- user: Only search user's personal documents\n- system: Only search admin-uploaded system documents\n- all: Search both (default), with user docs ranked first"
+      },
+      "DocumentListResponse": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentResponse"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documents",
+          "total"
+        ],
+        "title": "DocumentListResponse",
+        "description": "List of documents."
+      },
+      "DocumentResponse": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "file_format": {
+            "type": "string",
+            "title": "File Format"
+          },
+          "gcs_uri": {
+            "type": "string",
+            "title": "Gcs Uri"
+          },
+          "index_status": {
+            "type": "string",
+            "title": "Index Status",
+            "default": "indexing"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": "user"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "user_id",
+          "filename",
+          "file_format",
+          "gcs_uri"
+        ],
+        "title": "DocumentResponse",
+        "description": "Response after document upload."
+      },
+      "FillBlankQuestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "template": {
+            "type": "string",
+            "title": "Template",
+            "description": "Template with blanks, e.g., 'Fe + __ HCl → ...'"
+          },
+          "blanks": {
+            "items": {
+              "$ref": "#/components/schemas/BlankSlot"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Blanks"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyLevel"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "template",
+          "blanks",
+          "explanation",
+          "difficulty",
+          "topic"
+        ],
+        "title": "FillBlankQuestion",
+        "description": "Fill-in-the-blank question with one or more blanks."
+      },
+      "Flashcard": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "front": {
+            "type": "string",
+            "title": "Front",
+            "description": "Concept / formula / question"
+          },
+          "back": {
+            "type": "string",
+            "title": "Back",
+            "description": "Explanation + example"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyLevel"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "front",
+          "back",
+          "topic",
+          "difficulty"
+        ],
+        "title": "Flashcard",
+        "description": "Two-sided flashcard for memorization."
+      },
+      "GameContentMap": {
+        "properties": {
+          "quiz": {
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestion"
+            },
+            "type": "array",
+            "title": "Quiz"
+          },
+          "flashcard": {
+            "items": {
+              "$ref": "#/components/schemas/Flashcard"
+            },
+            "type": "array",
+            "title": "Flashcard"
+          },
+          "fill_blank": {
+            "items": {
+              "$ref": "#/components/schemas/FillBlankQuestion"
+            },
+            "type": "array",
+            "title": "Fill Blank"
+          }
+        },
+        "type": "object",
+        "title": "GameContentMap",
+        "description": "Typed content map — one list per game type.\n\nRule: NEVER use untyped dicts (dict[str, list[dict]]) for API payloads.\nEvery field must be explicitly typed so client codegen and validation work."
+      },
+      "GameContentResponse": {
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "description": "API contract version (semver)",
+            "default": "1.0.0"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "content": {
+            "$ref": "#/components/schemas/GameContentMap",
+            "description": "Typed game content grouped by game type"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/GenerationMetadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "user_id",
+          "generated_at",
+          "content",
+          "metadata"
+        ],
+        "title": "GameContentResponse",
+        "description": "Response containing generated game content.\n\nReturned by GET /api/v1/generations/{request_id} when status is completed."
+      },
+      "GameType": {
+        "type": "string",
+        "enum": [
+          "quiz",
+          "flashcard",
+          "fill_blank"
+        ],
+        "title": "GameType",
+        "description": "Supported game types for content generation."
+      },
+      "GenerationMetadata": {
+        "properties": {
+          "total_generated": {
+            "type": "integer",
+            "title": "Total Generated",
+            "description": "Total content items generated"
+          },
+          "total_passed_review": {
+            "type": "integer",
+            "title": "Total Passed Review",
+            "description": "Items that passed quality review"
+          },
+          "total_rejected": {
+            "type": "integer",
+            "title": "Total Rejected",
+            "description": "Items rejected by reviewer"
+          },
+          "generation_time_seconds": {
+            "type": "number",
+            "title": "Generation Time Seconds"
+          },
+          "model_used": {
+            "type": "string",
+            "title": "Model Used"
+          },
+          "vertex_search_queries": {
+            "type": "integer",
+            "title": "Vertex Search Queries",
+            "default": 1
+          },
+          "game_types_generated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Game Types Generated"
+          },
+          "cost_estimate_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Estimate Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_generated",
+          "total_passed_review",
+          "total_rejected",
+          "generation_time_seconds",
+          "model_used",
+          "game_types_generated"
+        ],
+        "title": "GenerationMetadata",
+        "description": "Metadata about a generation run."
+      },
+      "GenerationRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "User ID for document scoping"
+          },
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids",
+            "description": "Specific document IDs to use (optional)"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic",
+            "description": "Chapter/topic to focus on (optional)"
+          },
+          "game_types": {
+            "items": {
+              "$ref": "#/components/schemas/GameType"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Game Types",
+            "description": "Game types to generate (e.g., quiz, flashcard)"
+          },
+          "num_questions": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Num Questions",
+            "description": "Number of questions to generate per game type",
+            "default": 10
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyLevel",
+            "description": "Target difficulty level",
+            "default": "medium"
+          },
+          "doc_scope": {
+            "$ref": "#/components/schemas/DocScope",
+            "description": "Document scope: user, system, or all",
+            "default": "all"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "Target language for content (ISO 639-1)",
+            "default": "vi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "game_types"
+        ],
+        "title": "GenerationRequest",
+        "description": "Request to generate educational game content.\n\nSubmitted to POST /api/v1/generate, processed async via Cloud Tasks.",
+        "examples": [
+          {
+            "difficulty": "medium",
+            "doc_scope": "all",
+            "game_types": [
+              "quiz",
+              "flashcard"
+            ],
+            "language": "vi",
+            "num_questions": 10,
+            "topic": "Đạo hàm",
+            "user_id": "user_123"
+          }
+        ]
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "JobResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GameContentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "status",
+          "created_at"
+        ],
+        "title": "JobResponse",
+        "description": "Response for job status check."
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "processing",
+          "completed",
+          "failed"
+        ],
+        "title": "JobStatus",
+        "description": "Status of an async generation job."
+      },
+      "QuizOption": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "is_correct": {
+            "type": "boolean",
+            "title": "Is Correct",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "QuizOption",
+        "description": "A single option in a multiple-choice quiz question."
+      },
+      "QuizQuestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/QuizOption"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Options"
+          },
+          "correct_answer_index": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Correct Answer Index"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyLevel"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "computation_trace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computation Trace"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "question",
+          "options",
+          "correct_answer_index",
+          "explanation",
+          "difficulty",
+          "topic"
+        ],
+        "title": "QuizQuestion",
+        "description": "Multiple-choice quiz question with 4 options."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

@@ -42,7 +42,7 @@ class GenerationRequest(BaseModel):
         description="Number of questions to generate per game type",
     )
     difficulty: DifficultyLevel = Field(
-        default=DifficultyLevel.MEDIUM, description="Target difficulty level"
+        default=DifficultyLevel.COMPREHENSION, description="Target difficulty level"
     )
     doc_scope: DocScope = Field(
         default=DocScope.ALL, description="Document scope: user, system, or all"
@@ -59,7 +59,7 @@ class GenerationRequest(BaseModel):
                     "topic": "Đạo hàm",
                     "game_types": ["quiz", "flashcard"],
                     "num_questions": 10,
-                    "difficulty": "medium",
+                    "difficulty": "comprehension",
                     "doc_scope": "all",
                     "language": "vi",
                 }

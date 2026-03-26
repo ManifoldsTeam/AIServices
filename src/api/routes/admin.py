@@ -84,7 +84,13 @@ async def upload_system_document(
 @router.get("", response_model=DocumentListResponse)
 async def list_system_document_records() -> DocumentListResponse:
     """List all system documents from Firestore tracking records."""
-    documents = await list_document_records(scope="system", user_id=SYSTEM_USER_ID)
+    try:
+        documents = await list_document_records(scope="system", user_id=SYSTEM_USER_ID)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list system documents: {exc}",
+        ) from exc
     responses = [
         DocumentResponse(
             document_id=doc["doc_id"],

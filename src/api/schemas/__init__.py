@@ -8,6 +8,7 @@ from .game_content import (
     BlankSlot,
     GameType,
     DifficultyLevel,
+    GameContentMap,
 )
 from .requests import GenerationRequest, DocScope
 from .responses import GameContentResponse, GenerationMetadata, JobStatus
@@ -22,6 +23,7 @@ __all__ = [
     "BlankSlot",
     "GameType",
     "DifficultyLevel",
+    "GameContentMap",
     # Requests
     "GenerationRequest",
     "DocScope",

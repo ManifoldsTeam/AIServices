@@ -9,7 +9,7 @@ description: Define testing approach, test cases, and quality assurance
 
 ## Notebook Test Results (Verified)
 
-> **Last Updated:** 2026-03-11
+> **Last Updated:** 2026-03-22
 
 ### test_vertex_search.ipynb — 10/10 code cells PASS ✅
 
@@ -58,6 +58,35 @@ description: Define testing approach, test cases, and quality assurance
 
 - 14 cells created, awaiting execution
 - Tests: full pipeline E2E, feedback loop, multi-format output
+
+### test_accuracy_t42.ipynb — 100/100 ✅ (2026-03-21)
+
+| Metric                | Value                                   |
+| --------------------- | --------------------------------------- |
+| Questions Generated   | 100 (Math 40, Physics 30, Chemistry 30) |
+| Accuracy (Correct)    | 100/100 = 100%                          |
+| Evaluation Errors     | 0                                       |
+| Distractors Plausible | 95/100                                  |
+| Generation Time       | 2019s                                   |
+| Evaluation Time       | 334s                                    |
+
+---
+
+## Code Audit Results (2026-03-22)
+
+### Bugs Fixed
+
+| #   | File                                            | Issue                                                    | Fix                                                                       |
+| --- | ----------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------- |
+| B1  | `src/api/routes/user.py`                        | Missing error handling in `list_user_documents`          | Added try/except → HTTPException 500                                      |
+| B2  | `src/api/routes/admin.py`                       | Missing error handling in `list_system_document_records` | Added try/except → HTTPException 500                                      |
+| B3  | `src/api/routes/generation.py`                  | Invalid job status silently becomes FAILED               | Added logging warning                                                     |
+| B4  | `src/graph/nodes/formatter.py`, `math_agent.py` | `max_output_tokens=8192` hardcoded                       | Replaced with `STRUCTURED_MAX_TOKENS` / `GENERATION_MAX_TOKENS` constants |
+
+### Reviewed & Acceptable
+
+- **Reviewer fail-open** (`reviewer.py`): On LLM error, passes all items through — intentional resilience design
+- **Vertex AI Search fallback** (`vertex_search.py`): FailedPrecondition logs warning then falls back to basic search — correct behavior
 
 ---
 

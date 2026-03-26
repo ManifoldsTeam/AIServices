@@ -44,7 +44,7 @@ class AgentState(TypedDict, total=False):
     content_items: list[dict]
 
     # Review
-    reviewed_items: list[dict]
+    reviewed_items: Annotated[list[dict], add]  # Accumulate across iterations
     rejected_items: Annotated[list[dict], add]  # Accumulate across iterations
 
     # Control flow

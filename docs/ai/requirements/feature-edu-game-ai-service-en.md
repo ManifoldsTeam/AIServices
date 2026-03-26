@@ -1,4 +1,3 @@
-```markdown
 ---
 phase: requirements
 title: Requirements & Problem Understanding
@@ -143,6 +142,7 @@ Each data type requires **specialized handling** — a generic agent cannot solv
 > As a **User**, I want to specify: quantity, difficulty level, game type, chapter/topic, to receive output matching my needs.
 
 ### Key Workflow
+
 ```
 
 Flow A — Admin adds system docs:
@@ -193,15 +193,15 @@ Flow C — Generate game content:
 
 All game types are based on **educational content items** at the base layer:
 
-| Game Type         | Q&A Nature                      | Output Structure                                                |
-| ----------------- | ------------------------------- | --------------------------------------------------------------- |
+| Game Type         | Q&A Nature                       | Output Structure                                                |
+| ----------------- | -------------------------------- | --------------------------------------------------------------- |
 | **Quiz**          | Question + 4 options + 1 correct | `{ question, options[], correct_index, explanation }`           |
-| **Flashcard**     | Concept pair (front/back)       | `{ front, back, tags[] }`                                       |
-| **Fill-in-blank** | Sentence with blanks + answers  | `{ template, blanks[], explanation }`                           |
-| **Adventure Q&A** | Narrative + branching questions | `{ narrative, question, choices[], correct_path, consequence }` |
-| **Matching**      | Pairs to connect                | `{ pairs[{left, right}], category }`                            |
-| **True/False**    | Statement + boolean answer      | `{ statement, is_true, explanation }`                           |
-| **Ordering**      | Items to arrange                | `{ items[], correct_order[], context }`                         |
+| **Flashcard**     | Concept pair (front/back)        | `{ front, back, tags[] }`                                       |
+| **Fill-in-blank** | Sentence with blanks + answers   | `{ template, blanks[], explanation }`                           |
+| **Adventure Q&A** | Narrative + branching questions  | `{ narrative, question, choices[], correct_path, consequence }` |
+| **Matching**      | Pairs to connect                 | `{ pairs[{left, right}], category }`                            |
+| **True/False**    | Statement + boolean answer       | `{ statement, is_true, explanation }`                           |
+| **Ordering**      | Items to arrange                 | `{ items[], correct_order[], context }`                         |
 
 **Phase 1:** Quiz, Flashcard, Fill-in-blank (validated). Adding game types = adding Pydantic schema + formatter prompt. No changes to LangGraph graph needed.
 **Phase 2:** Timeline, True/False, Matching (for Story Agent).
@@ -350,12 +350,12 @@ All APIs have been enabled. See detailed resource setup in Implementation Guide 
 
 ### Future Roadmap (LangGraph graph extension)
 
-| Phase       | Focus                                                                            | New LangGraph Node    | Additional GCP Service |
-| ----------- | -------------------------------------------------------------------------------- | --------------------- | ---------------------- |
+| Phase       | Focus                                                                            | New LangGraph Node     | Additional GCP Service    |
+| ----------- | -------------------------------------------------------------------------------- | ---------------------- | ------------------------- |
 | **Phase 1** | Q&A-based games (Quiz, Flashcard, Fill-blank) + Dual doc sources (System + User) | Math Agent + Formatter | Code Execution, AI Search |
-| **Phase 2** | Narrative games (Adventure, Story-driven)                                        | Story Agent           | Context Caching        |
-| **Phase 3** | Visual games (Image-based, Diagram)                                              | Visual Agent          | Gemini Vision          |
-| **Phase 4** | Structured games (Table, Classification)                                         | Table Agent           | AI Search (structured) |
+| **Phase 2** | Narrative games (Adventure, Story-driven)                                        | Story Agent            | Context Caching           |
+| **Phase 3** | Visual games (Image-based, Diagram)                                              | Visual Agent           | Gemini Vision             |
+| **Phase 4** | Structured games (Table, Classification)                                         | Table Agent            | AI Search (structured)    |
 
 ---
 
@@ -364,4 +364,3 @@ All APIs have been enabled. See detailed resource setup in Implementation Guide 
 > - GCS bucket: `system/` (admin docs) + `user/{user_id}/` (user docs). AI Search metadata: `user_id="__system__"` / `user_id="{user_id}"`.
 > - APIs enabled. Rate limit, retention, quota, privacy → recorded in "Decided" #13-19.
 > - User tiers (free/premium) = non-goal for Phase 1.
-```

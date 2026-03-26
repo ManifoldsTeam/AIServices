@@ -18,11 +18,19 @@ class GameType(str, Enum):
 
 
 class DifficultyLevel(str, Enum):
-    """Question difficulty levels."""
+    """Cognitive difficulty levels aligned with Vietnamese THPT standards.
 
-    EASY = "easy"
-    MEDIUM = "medium"
-    HARD = "hard"
+    Based on Thong tu 22/2021/TT-BGDDT and national exam matrices (ma tran de thi):
+    - RECALL (Nhan biet): Knowledge recall, recognition, identification (~30-40%)
+    - COMPREHENSION (Thong hieu): Understanding, explanation, interpretation (~30%)
+    - APPLICATION (Van dung): Apply procedures to routine problems (~20-30%)
+    - HIGH_APPLICATION (Van dung cao): Non-routine, multi-step, synthesis (~10%)
+    """
+
+    RECALL = "recall"
+    COMPREHENSION = "comprehension"
+    APPLICATION = "application"
+    HIGH_APPLICATION = "high_application"
 
 
 class ContentItem(BaseModel):
@@ -39,7 +47,7 @@ class ContentItem(BaseModel):
     topic: str = Field(
         ..., description="Subject topic (e.g., 'Derivatives', 'Newton's Laws')"
     )
-    difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
+    difficulty: DifficultyLevel = Field(default=DifficultyLevel.COMPREHENSION)
     context_source: str = Field(..., description="Source document/page reference")
     doc_scope: str = Field(..., description="Origin: 'system' or 'user'")
     computation_trace: str | None = Field(
@@ -100,3 +108,16 @@ class FillBlankQuestion(BaseModel):
     explanation: str
     difficulty: DifficultyLevel
     topic: str
+
+
+# --- Typed content map (replaces dict[str, list[dict]]) ---
+class GameContentMap(BaseModel):
+    """Typed content map — one list per game type.
+
+    Rule: NEVER use untyped dicts (dict[str, list[dict]]) for API payloads.
+    Every field must be explicitly typed so client codegen and validation work.
+    """
+
+    quiz: list[QuizQuestion] = Field(default_factory=list)
+    flashcard: list[Flashcard] = Field(default_factory=list)
+    fill_blank: list[FillBlankQuestion] = Field(default_factory=list)

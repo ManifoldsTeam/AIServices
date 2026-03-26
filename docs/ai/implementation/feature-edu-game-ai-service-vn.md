@@ -268,6 +268,8 @@ uvicorn src.main:app --reload --port 8000
 
 **Code được tổ chức như thế nào?**
 
+> **Trạng thái:** Core pipeline + tất cả services đã triển khai. API routes + deployment ⏸️ HOÃN (sẽ triển khai sau khi hoàn thành tất cả Pillars nội dung).
+
 ```
 src/
 ├── api/                        # FastAPI — layer mỏng, delegate sang graph

@@ -34,6 +34,21 @@ EXTENSION_MIME_MAP: dict[str, str] = {
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 
+# ─── Batch Parsing ───────────────────────────────────────────────────
+PARSE_BATCH_SIZE: int = 7
+"""Max items per batch when parsing LLM structured output (math_agent)."""
+
+FORMATTER_BATCH_SIZE: int = 7
+"""Max items per batch when formatting to game types (formatter)."""
+
+# ─── Yield Overshoot ────────────────────────────────────────────────
+YIELD_OVERSHOOT_RATIO: float = 1.3
+"""Generate 30% more items than requested to buffer against review rejection."""
+
+# ─── Document Types ──────────────────────────────────────────────────
+DOC_TYPES: set[str] = {"sgk", "sbt", "de-thi", "chuyen-de", "trac-nghiem", "khac"}
+"""Valid document types for system-uploaded content."""
+
 # ─── System Defaults ────────────────────────────────────────────────
 SYSTEM_USER_ID: str = "__system__"
 """Sentinel user ID for system-uploaded documents."""

@@ -48,12 +48,12 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 
 **Những deliverables chính là gì?**
 
-| Mốc    | Tên                          | Tiêu chí Hoàn thành                                                            | Ngày Mục tiêu |
-| ------ | ---------------------------- | ------------------------------------------------------------------------------ | ------------- |
-| **M1** | Nền tảng Sẵn sàng            | LangGraph pipeline chạy local, Vertex AI Search hoạt động với fixtures         | Cuối Tuần 1   |
-| **M2** | Async + Multi-tenant Phase 1 | POST /generate → async → poll works, doc_scope filtering đúng, user-first      | Giữa Tuần 2   |
-| **M3** | API Sẵn sàng Tích hợp        | Tất cả endpoints hoạt động, Admin API done, schema finalized với Game Client   | Cuối Tuần 2   |
-| **M4** | Production Ready             | Cloud Run deploy, Cloud Run IAM verified, 98% accuracy, latency <60s, E2E pass | Cuối Tuần 3   |
+| Mốc    | Tên                          | Tiêu chí Hoàn thành                                                            | Ngày Mục tiêu                                       |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------- |
+| **M1** | Nền tảng Sẵn sàng            | LangGraph pipeline chạy local, Vertex AI Search hoạt động với fixtures         | Cuối Tuần 1                                         |
+| **M2** | Async + Multi-tenant Phase 1 | POST /generate → async → poll works, doc_scope filtering đúng, user-first      | Giữa Tuần 2                                         |
+| **M3** | API Sẵn sàng Tích hợp        | Tất cả endpoints hoạt động, Admin API done, schema finalized với Game Client   | Cuối Tuần 2                                         |
+| **M4** | Production Ready             | Cloud Run deploy, Cloud Run IAM verified, 98% accuracy, latency <60s, E2E pass | ⏸️ **DEFERRED** — Sau khi hoàn thành tất cả Pillars |
 
 ---
 
@@ -151,17 +151,18 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [ ] Extract ra separate `templates/registry.py` module (optional refactor)
 - [x] Test generation mỗi loại (quiz, flashcard, fill_blank) ✅ Verified 2026-03-11 (`test_week2_local_session_2026_03_11.ipynb`)
 
-#### T3.1: Code Execution cho STEM (1 ngày)
+#### T3.1: Code Execution cho STEM (1 ngày) ✅ Implemented 2026-03-20
 
-- [ ] Enable Code Execution trong Gemini config
-- [ ] Update Math Agent prompt yêu cầu dùng Python cho calculations
+- [x] Enable Code Execution trong Gemini config — `bind_tools([{"code_execution": {}}])` ✅
+- [x] Update Math Agent prompt yêu cầu dùng Python cho calculations ✅
+- [x] Two-phase approach: Phase 1 code exec + Phase 2 structured parsing ✅
 - [ ] Test với 20 câu toán/lý/hóa từ golden set
 - [ ] Handle execution timeout gracefully
 
 #### T3.2: Pydantic Schemas Finalize (0.5 ngày) ✅ Implemented 2026-03-09
 
 - [x] All request/response/game content schemas implemented trong `src/api/schemas/` ✅
-- [ ] Generate OpenAPI spec
+- [x] Generate OpenAPI spec → `docs/openapi.json` ✅ 2026-03-20 (10 endpoints)
 - [ ] Review với Game Client team (async meeting nếu cần)
 - [ ] Confirm schema compatibility
 
@@ -169,13 +170,19 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 
 ---
 
-### Tuần 3: Production Hardening (T4.x)
+### Tuần 3: Production Hardening (T4.x) — ⏸️ DEFERRED
 
-#### T4.1: API Hoàn thiện (1 ngày)
+> **Ghi chú:** Phase này được hoãn cho đến khi hoàn thành tất cả các luồng nội dung chính (Pillars 1-4).
+> Hiện tại chỉ có Pillar 1 (Toán/Lý/Hóa qua Math Agent) đã triển khai.
+> Deploy sẽ là phase cuối cùng sau khi hoàn thành: Pillar 2 (Story Agent — Văn/Sử),
+> Pillar 3 (Visual Agent — Địa/Sinh), và Pillar 4 (Structure Agent — Ngữ pháp/Bảng).
 
-- [ ] GET `/api/v1/users/{user_id}/documents` — list user docs
-- [ ] GET `/api/v1/game-types` — list supported types với schemas
-- [ ] Error handling thống nhất (HTTPException với detail rõ ràng)
+#### T4.1: API Hoàn thiện (1 ngày) ✅ Implemented 2026-03-20
+
+- [x] GET `/api/v1/users/{user_id}/documents` — list user docs ✅
+- [x] POST `/api/v1/users/{user_id}/documents/upload` — upload user docs ✅
+- [x] GET `/api/v1/game-types` — list supported types với schemas ✅
+- [x] Error handling thống nhất — `src/api/errors.py` (validation + unhandled) ✅
 - [ ] Timeout handling for polling endpoints
 
 #### T4.2: Accuracy Testing (1.5 ngày)
@@ -192,9 +199,11 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [ ] Identify bottlenecks, tune nếu cần
 - [ ] Test Cloud Tasks queue behavior under load
 
-#### T4.4: Deployment & IAM (1 ngày)
+#### T4.4: Deployment & IAM (1 ngày) ✅ Partially Implemented 2026-03-20
 
-- [ ] Dockerfile optimized (multi-stage, slim base)
+- [x] Dockerfile optimized (multi-stage, slim base) ✅
+- [x] `.dockerignore` configured ✅
+- [x] Deploy script `scripts/deploy.sh` ✅
 - [ ] Cloud Run deploy với `--no-allow-unauthenticated`
 - [ ] Grant upstream service account `roles/run.invoker`
 - [ ] Grant Cloud Tasks service account invoke permission
@@ -218,7 +227,7 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 - [ ] Integration guide cho Game Client
 - [ ] IAM setup checklist
 
-**Deliverable Tuần 3**: Production-ready service, 98% accuracy, latency met, E2E tested
+**Deliverable Tuần 3**: ⏸️ DEFERRED — Production-ready service sẽ triển khai sau khi hoàn thành tất cả Pillars
 
 ---
 
@@ -292,11 +301,13 @@ Buffer: 1-2 ngày cho unexpected issues.
 
 **Làm sao biết Phase 1 xong?**
 
+> **Ghi chú:** Các mục liên quan đến deploy (Cloud Run, IAM, Cloud Tasks) được hoãn đến phase cuối cùng.
+
 - [ ] Tất cả endpoints respond đúng
 - [ ] Async flow hoạt động: POST → 202 → poll → completed
-- [ ] Cloud Run deployed với `--no-allow-unauthenticated`
-- [ ] Cloud Run IAM verified (chỉ upstream gọi được)
-- [ ] Cloud Tasks flow verified (internal endpoints secure)
+- [ ] ⏸️ ~~Cloud Run deployed với `--no-allow-unauthenticated`~~ (DEFERRED)
+- [ ] ⏸️ ~~Cloud Run IAM verified (chỉ upstream gọi được)~~ (DEFERRED)
+- [ ] ⏸️ ~~Cloud Tasks flow verified (internal endpoints secure)~~ (DEFERRED)
 - [ ] 3 game types: quiz, flashcard, fill_blank
 - [ ] 3 file formats: PDF, DOCX, PPTX
 - [ ] doc_scope filtering đúng: user, system, all
