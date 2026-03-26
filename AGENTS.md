@@ -39,6 +39,20 @@ This project uses ai-devkit for structured AI-assisted development. Phase docume
 - Reference the planning doc for task breakdown and priorities
 - Copy the testing template (`docs/ai/testing/README.md`) before creating feature-specific testing docs
 
+### Timeline Tracking (REQUIRED)
+
+After completing any significant action (bug fix, feature implementation, refactoring, data migration, infrastructure change), the agent **MUST** append a new entry to `docs/ai/timeline.md` following the template format defined in that file.
+
+**What counts as "significant":**
+
+- Code changes affecting core logic or architecture
+- Data migrations (bucket uploads, database changes)
+- Bug fixes that required investigation
+- New features or endpoints deployed
+- Configuration or infrastructure changes
+
+**Entry must include:** Vấn đề (problem), Nguyên nhân (root cause), Hành động (actions taken), Kết quả (outcome), and References (files changed with descriptions).
+
 ### Checklist Verification & Documentation Updates (REQUIRED)
 
 When verifying or completing checklist items from planning/implementation docs:

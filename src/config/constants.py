@@ -45,6 +45,10 @@ FORMATTER_BATCH_SIZE: int = 7
 YIELD_OVERSHOOT_RATIO: float = 1.3
 """Generate 30% more items than requested to buffer against review rejection."""
 
+# ─── Document Types ──────────────────────────────────────────────────
+DOC_TYPES: set[str] = {"sgk", "sbt", "de-thi", "chuyen-de", "trac-nghiem", "khac"}
+"""Valid document types for system-uploaded content."""
+
 # ─── System Defaults ────────────────────────────────────────────────
 SYSTEM_USER_ID: str = "__system__"
 """Sentinel user ID for system-uploaded documents."""

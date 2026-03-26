@@ -20,20 +20,20 @@ research_sources: Tavily Pro research (2026-03-24), Vertex AI docs, LangGraph do
 
 ### Pipeline Test Results (M3 accuracy test — 368 items)
 
-| Test                    | Items | Pass% | Time   | Notes                                |
-| ----------------------- | ----- | ----- | ------ | ------------------------------------ |
-| smoke_5q                | 5     | 100%  | 64.2s  |                                      |
-| medium_15q              | 15    | 100%  | 92.8s  |                                      |
-| large_30q               | 25    | 64.1% | 125.0s | **429 rate limit errors observed**   |
-| multi_type (3 games)    | 45    | 100%  | 70.9s  | Formatter parallelization working    |
-| diff_application        | 7     | 100%  | 163.5s |                                      |
-| diff_high_application   | 1     | 7.1%  | 434.9s | Broken — KB lacks exercise exemplars |
-| **TOTAL**               | 368   |**89%**|1700.2s | 28.3min for full suite               |
+| Test                  | Items | Pass%   | Time    | Notes                                |
+| --------------------- | ----- | ------- | ------- | ------------------------------------ |
+| smoke_5q              | 5     | 100%    | 64.2s   |                                      |
+| medium_15q            | 15    | 100%    | 92.8s   |                                      |
+| large_30q             | 25    | 64.1%   | 125.0s  | **429 rate limit errors observed**   |
+| multi_type (3 games)  | 45    | 100%    | 70.9s   | Formatter parallelization working    |
+| diff_application      | 7     | 100%    | 163.5s  |                                      |
+| diff_high_application | 1     | 7.1%    | 434.9s  | Broken — KB lacks exercise exemplars |
+| **TOTAL**             | 368   | **89%** | 1700.2s | 28.3min for full suite               |
 
 ### LLM Call Chain Per Pipeline Run (10Q quiz-only)
 
 | Node             | Calls  | Model                         | Purpose            | Est. Time    |
-| ---------------- | ------ | ----------------------------- | ------------------- | ------------ |
+| ---------------- | ------ | ----------------------------- | ------------------ | ------------ |
 | Supervisor       | 1      | gemini-3.1-flash-lite         | Classification     | ~2s          |
 | Math Agent Gen   | 1      | gemini-2.5-flash (code_exec)  | Content generation | ~30-60s      |
 | Math Agent Parse | 1-2    | gemini-2.5-flash (structured) | Batch parse 7+6    | ~15-30s      |
@@ -51,14 +51,14 @@ With retry iterations: ×2-3 multiplier on worst cases.
 
 ## 2. Optimizations Implemented (M3 — Done)
 
-| Optimization | Where | Impact |
-|---|---|---|
-| Formatter `asyncio.gather()` for game types | `formatter.py` | 2-3× speedup for multi-game requests |
-| Batch parse retry with backoff | `math_agent.py` `_parse_batch()` | Fewer full pipeline retries |
-| Parallel batch parsing via `asyncio.gather()` | `math_agent.py` `_parse_raw_content()` | 2× parse speed |
-| Code trace truncation (8000 chars) | `math_agent.py` `_truncate_code_traces()` | Better parse success rate |
-| Internal generation retry (2 attempts) | `math_agent.py` `math_agent_node()` | Avoids full pipeline restart on parse failure |
-| Early termination on empty output | `math_agent.py` | Skip useless parse attempts |
+| Optimization                                  | Where                                     | Impact                                        |
+| --------------------------------------------- | ----------------------------------------- | --------------------------------------------- |
+| Formatter `asyncio.gather()` for game types   | `formatter.py`                            | 2-3× speedup for multi-game requests          |
+| Batch parse retry with backoff                | `math_agent.py` `_parse_batch()`          | Fewer full pipeline retries                   |
+| Parallel batch parsing via `asyncio.gather()` | `math_agent.py` `_parse_raw_content()`    | 2× parse speed                                |
+| Code trace truncation (8000 chars)            | `math_agent.py` `_truncate_code_traces()` | Better parse success rate                     |
+| Internal generation retry (2 attempts)        | `math_agent.py` `math_agent_node()`       | Avoids full pipeline restart on parse failure |
+| Early termination on empty output             | `math_agent.py`                           | Skip useless parse attempts                   |
 
 ---
 
@@ -167,6 +167,7 @@ async def rate_limited_llm_call(coro):
 ```
 
 **Why this design:**
+
 - **Token bucket** enforces average rate (1 req/s = 60 RPM) while allowing short bursts (capacity=5)
 - **Semaphore** caps concurrent HTTP connections to prevent resource exhaustion
 - **Module-level singletons** ensure all pipeline nodes share the same limiter
@@ -174,25 +175,25 @@ async def rate_limited_llm_call(coro):
 
 **Tuning for quota:**
 
-| Quota (RPM) | `refill_rate` | `capacity` | `semaphore` | Max Concurrent Instances |
-|---|---|---|---|---|
-| 60 (default) | 1.0 | 5 | 10 | 1 (safety margin) |
-| 200 (requested) | 3.0 | 10 | 15 | 3-5 |
-| 500 (high) | 8.0 | 15 | 20 | 8-10 |
+| Quota (RPM)     | `refill_rate` | `capacity` | `semaphore` | Max Concurrent Instances |
+| --------------- | ------------- | ---------- | ----------- | ------------------------ |
+| 60 (default)    | 1.0           | 5          | 10          | 1 (safety margin)        |
+| 200 (requested) | 3.0           | 10         | 15          | 3-5                      |
+| 500 (high)      | 8.0           | 15         | 20          | 8-10                     |
 
 ### 3.3 Integration Points in Current Codebase
 
 Where to wire `rate_limited_llm_call()`:
 
-| File | Function | LLM Calls | Change |
-|---|---|---|---|
-| `math_agent.py` | `math_agent_node()` | `code_exec_llm.ainvoke()` | Wrap with rate limiter |
-| `math_agent.py` | `_parse_batch()` | `structured_llm.ainvoke()` | Wrap with rate limiter |
-| `formatter.py` | `_format_quizzes()` | `chain.ainvoke()` | Wrap with rate limiter |
-| `formatter.py` | `_format_flashcards()` | `chain.ainvoke()` | Wrap with rate limiter |
-| `formatter.py` | `_format_fill_blanks()` | `chain.ainvoke()` | Wrap with rate limiter |
-| `reviewer.py` | `reviewer_node()` | `review_llm.ainvoke()` | Wrap with rate limiter |
-| `supervisor.py` | `supervisor_node()` | `llm.ainvoke()` | Wrap with rate limiter |
+| File            | Function                | LLM Calls                  | Change                 |
+| --------------- | ----------------------- | -------------------------- | ---------------------- |
+| `math_agent.py` | `math_agent_node()`     | `code_exec_llm.ainvoke()`  | Wrap with rate limiter |
+| `math_agent.py` | `_parse_batch()`        | `structured_llm.ainvoke()` | Wrap with rate limiter |
+| `formatter.py`  | `_format_quizzes()`     | `chain.ainvoke()`          | Wrap with rate limiter |
+| `formatter.py`  | `_format_flashcards()`  | `chain.ainvoke()`          | Wrap with rate limiter |
+| `formatter.py`  | `_format_fill_blanks()` | `chain.ainvoke()`          | Wrap with rate limiter |
+| `reviewer.py`   | `reviewer_node()`       | `review_llm.ainvoke()`     | Wrap with rate limiter |
+| `supervisor.py` | `supervisor_node()`     | `llm.ainvoke()`            | Wrap with rate limiter |
 
 **Minimal code change per call site:**
 
@@ -248,13 +249,13 @@ class CircuitBreaker:
 
 ### P0 — Within-Pipeline Parallelism (DONE)
 
-| Optimization | Status | File |
-|---|---|---|
-| Formatter `asyncio.gather()` for game types | Done | `formatter.py` |
-| Batch parse retry with backoff | Done | `math_agent.py` |
-| Parallel batch parsing via `asyncio.gather()` | Done | `math_agent.py` |
-| Code trace truncation (8000 chars) | Done | `math_agent.py` |
-| Internal generation retry (2 attempts) | Done | `math_agent.py` |
+| Optimization                                  | Status | File            |
+| --------------------------------------------- | ------ | --------------- |
+| Formatter `asyncio.gather()` for game types   | Done   | `formatter.py`  |
+| Batch parse retry with backoff                | Done   | `math_agent.py` |
+| Parallel batch parsing via `asyncio.gather()` | Done   | `math_agent.py` |
+| Code trace truncation (8000 chars)            | Done   | `math_agent.py` |
+| Internal generation retry (2 attempts)        | Done   | `math_agent.py` |
 
 ### P1 — Client-Side Rate Limiting (CRITICAL — Blocks all scaling)
 
@@ -263,6 +264,7 @@ class CircuitBreaker:
 **Solution:** `AsyncTokenBucket` + `asyncio.Semaphore` (Section 3.2 above)
 
 **Implementation steps:**
+
 1. Create `src/services/rate_limiter.py` with `AsyncTokenBucket`, `CircuitBreaker`, and `rate_limited_llm_call()`
 2. Wire into all 7 LLM call sites (table in Section 3.3)
 3. Add rate limiter config to `Settings` (env-configurable: `LLM_RATE_LIMIT_RPM`, `LLM_MAX_CONCURRENT`)
@@ -276,12 +278,14 @@ class CircuitBreaker:
 **Problem:** Each game type's formatter runs batches sequentially inside `_format_quizzes()`, `_format_flashcards()`, `_format_fill_blanks()`.
 
 **Current pattern:**
+
 ```python
 for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
     result = await chain.ainvoke(...)  # Sequential!
 ```
 
 **Proposed pattern:**
+
 ```python
 batch_tasks = [chain.ainvoke(bd) for bd in all_batch_data]
 results = await asyncio.gather(*batch_tasks, return_exceptions=True)
@@ -296,6 +300,7 @@ results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 **Use case:** Teacher generates 100 questions for exam prep.
 
 **Architecture:**
+
 ```
 POST /generate { num_questions: 100 }
   │
@@ -362,6 +367,7 @@ async def batch_generate(request, max_workers=5):
 **For Cloud Tasks mode:** Each sub-job = separate Cloud Tasks entry → separate Cloud Run instance.
 
 **Partial failure handling:**
+
 - Each sub-job checkpoints independently (Firestore status per sub-job)
 - Failed sub-jobs can be retried individually
 - Parent job aggregates: if >=80% sub-jobs succeed, return partial result + failure report
@@ -376,17 +382,18 @@ async def batch_generate(request, max_workers=5):
 
 **Options (increasing complexity):**
 
-| Approach | When | Complexity | Recommendation |
-|---|---|---|---|
-| Per-instance token bucket | <=3 instances | None (already in P1) | Divide quota by max instances |
-| Cloud Tasks dispatch rate | Any scale | Low (config) | Set `max_dispatches_per_second` |
-| Redis-backed distributed bucket | >5 instances | Medium | Use `self-limiters` library |
+| Approach                        | When          | Complexity           | Recommendation                  |
+| ------------------------------- | ------------- | -------------------- | ------------------------------- |
+| Per-instance token bucket       | <=3 instances | None (already in P1) | Divide quota by max instances   |
+| Cloud Tasks dispatch rate       | Any scale     | Low (config)         | Set `max_dispatches_per_second` |
+| Redis-backed distributed bucket | >5 instances  | Medium               | Use `self-limiters` library     |
 
 **For our scale (<=10 instances):** Cloud Tasks rate limiting (5/s dispatch, 10 max concurrent) is sufficient. No Redis needed until >50 RPM per instance.
 
 ### P5 — Caching Layer (Future)
 
 **Strategy:** Cache at two levels:
+
 1. **Vertex AI Search results** — same query+topic+scope → same context (TTL: 1h)
 2. **Pipeline output** — same request params → same content (TTL: 24h, with randomization)
 
@@ -403,34 +410,35 @@ cache_hash = hashlib.sha256(cache_key.encode()).hexdigest()
 
 ## 5. Priority Matrix (Updated)
 
-| # | Optimization | Effort | Impact | Priority | Status | Depends On |
-|---|---|---|---|---|---|---|
-| 1 | Formatter `asyncio.gather()` | Low | 2-3× formatter | P0 | Done | — |
-| 2 | Batch parse retry + backoff | Low | Fewer retries | P0 | Done | — |
-| 3 | Parallel batch parsing | Low | 2× parse speed | P0 | Done | — |
-| 4 | Code trace truncation | Low | Better parse rate | P0 | Done | — |
-| 5 | Internal gen retry | Low | No pipeline restart | P0 | Done | — |
-| **6** | **AsyncTokenBucket + Semaphore** | **Low-Med** | **Eliminates 429s** | **P1** | **Next** | — |
-| **7** | **Circuit breaker** | **Low** | **Prevents retry storms** | **P1** | **Next** | #6 |
-| 8 | Parallel format batches | Low | 1.5× per game type | P2 | Not started | #6 |
-| 9 | Request batching (100Q→10×10Q) | Medium | 10× large requests | P3 | Not started | #6 |
-| 10 | Cloud Tasks rate limiting | Low (config) | Quota protection | P4 | Deploy phase | — |
-| 11 | Cloud Run auto-scaling | Low (config) | N concurrent users | P4 | Deploy phase | #10 |
-| 12 | Caching layer | Medium | Skip pipeline | P5 | Future | Production data |
+| #     | Optimization                     | Effort       | Impact                    | Priority | Status       | Depends On      |
+| ----- | -------------------------------- | ------------ | ------------------------- | -------- | ------------ | --------------- |
+| 1     | Formatter `asyncio.gather()`     | Low          | 2-3× formatter            | P0       | Done         | —               |
+| 2     | Batch parse retry + backoff      | Low          | Fewer retries             | P0       | Done         | —               |
+| 3     | Parallel batch parsing           | Low          | 2× parse speed            | P0       | Done         | —               |
+| 4     | Code trace truncation            | Low          | Better parse rate         | P0       | Done         | —               |
+| 5     | Internal gen retry               | Low          | No pipeline restart       | P0       | Done         | —               |
+| **6** | **AsyncTokenBucket + Semaphore** | **Low-Med**  | **Eliminates 429s**       | **P1**   | **Next**     | —               |
+| **7** | **Circuit breaker**              | **Low**      | **Prevents retry storms** | **P1**   | **Next**     | #6              |
+| 8     | Parallel format batches          | Low          | 1.5× per game type        | P2       | Not started  | #6              |
+| 9     | Request batching (100Q→10×10Q)   | Medium       | 10× large requests        | P3       | Not started  | #6              |
+| 10    | Cloud Tasks rate limiting        | Low (config) | Quota protection          | P4       | Deploy phase | —               |
+| 11    | Cloud Run auto-scaling           | Low (config) | N concurrent users        | P4       | Deploy phase | #10             |
+| 12    | Caching layer                    | Medium       | Skip pipeline             | P5       | Future       | Production data |
 
 ---
 
 ## 6. Estimated Performance After Optimizations
 
-| Scenario | Current (M3) | +P1 (rate limit) | +P2 (parallel fmt) | +P3 (batching) | +P4/P5 (deploy) |
-|---|---|---|---|---|---|
-| 1 user, 10Q, quiz | ~90s | ~90s | ~80s | ~80s | ~80s |
-| 1 user, 10Q, 3 games | ~70s | ~70s | ~60s | ~60s | ~60s |
-| 1 user, 30Q, quiz | ~125s (**64% pass**) | ~140s (**~95% pass**) | ~120s | ~120s | ~120s |
-| 1 user, 100Q, quiz | ~2000s | ~2000s | ~1800s | **~200s** | ~200s |
-| 10 concurrent, 10Q | Sequential | Sequential | Sequential | Sequential | **~120s parallel** |
+| Scenario             | Current (M3)         | +P1 (rate limit)      | +P2 (parallel fmt) | +P3 (batching) | +P4/P5 (deploy)    |
+| -------------------- | -------------------- | --------------------- | ------------------ | -------------- | ------------------ |
+| 1 user, 10Q, quiz    | ~90s                 | ~90s                  | ~80s               | ~80s           | ~80s               |
+| 1 user, 10Q, 3 games | ~70s                 | ~70s                  | ~60s               | ~60s           | ~60s               |
+| 1 user, 30Q, quiz    | ~125s (**64% pass**) | ~140s (**~95% pass**) | ~120s              | ~120s          | ~120s              |
+| 1 user, 100Q, quiz   | ~2000s               | ~2000s                | ~1800s             | **~200s**      | ~200s              |
+| 10 concurrent, 10Q   | Sequential           | Sequential            | Sequential         | Sequential     | **~120s parallel** |
 
 **Key insights:**
+
 1. **P1 (rate limiter) is the #1 priority** — fixes the 429 reliability issue in `large_30q` (64% → ~95% pass rate)
 2. **P3 (request batching) gives the biggest latency win** for large requests (10× speedup)
 3. **P4 (Cloud Run/Tasks) enables multi-user concurrency** — deferred to deploy phase as per user request
@@ -470,11 +478,11 @@ Phase 4 (Deploy Phase — deferred):
 
 ## 8. Vertex AI Quota Reference
 
-| Dimension | Default (asia-southeast1) | Our Usage (1 pipeline) | 10 Concurrent | Action Needed |
-|---|---|---|---|---|
-| RPM | 60 | ~7 | ~70 | Request increase to 200 if >15 concurrent |
-| TPM | 1,000,000 | ~56,000 | ~560,000 | Within limits |
-| RPD | 1,500 | ~7 | ~700/day (100 runs) | Within limits |
+| Dimension | Default (asia-southeast1) | Our Usage (1 pipeline) | 10 Concurrent       | Action Needed                             |
+| --------- | ------------------------- | ---------------------- | ------------------- | ----------------------------------------- |
+| RPM       | 60                        | ~7                     | ~70                 | Request increase to 200 if >15 concurrent |
+| TPM       | 1,000,000                 | ~56,000                | ~560,000            | Within limits                             |
+| RPD       | 1,500                     | ~7                     | ~700/day (100 runs) | Within limits                             |
 
 **Recommendation:** For production, request quota increase to 200 RPM. With the token bucket rate limiter, even the default 60 RPM will work for <=8 concurrent pipelines.
 
@@ -483,6 +491,7 @@ Phase 4 (Deploy Phase — deferred):
 ## Appendix A: Research Sources
 
 This design was informed by:
+
 - Vertex AI retry strategy docs (exponential backoff + jitter for 429/5xx)
 - Gemini API rate limits docs (multi-dimensional: RPM, TPM, RPD per project)
 - Published async token-bucket implementations for Python/asyncio

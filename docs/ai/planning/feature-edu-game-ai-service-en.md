@@ -378,14 +378,14 @@ graph LR
 
 ## Timeline & Estimates
 
-| Phase                        | Duration    | Effort   | Deliverable                                                                       |
-| ---------------------------- | ----------- | -------- | --------------------------------------------------------------------------------- |
-| Phase 0: GCP Setup           | 2 days      | ~4h      | All APIs enabled, resources created, IAM configured                               |
-| Phase 1: PoC & Scaffold      | 4 days      | ~20h     | PoC passed (retriever + filter + code exec + multi-format + Cloud Tasks), schemas |
-| Phase 2: Core Pipeline       | 5 days      | ~25h     | Full LangGraph pipeline working E2E                                               |
-| Phase 3: Quality & Templates | 5 days      | ~24h     | Game templates, feedback loop, accuracy ≥ 98%                                     |
+| Phase                        | Duration    | Effort   | Deliverable                                                                          |
+| ---------------------------- | ----------- | -------- | ------------------------------------------------------------------------------------ |
+| Phase 0: GCP Setup           | 2 days      | ~4h      | All APIs enabled, resources created, IAM configured                                  |
+| Phase 1: PoC & Scaffold      | 4 days      | ~20h     | PoC passed (retriever + filter + code exec + multi-format + Cloud Tasks), schemas    |
+| Phase 2: Core Pipeline       | 5 days      | ~25h     | Full LangGraph pipeline working E2E                                                  |
+| Phase 3: Quality & Templates | 5 days      | ~24h     | Game templates, feedback loop, accuracy ≥ 98%                                        |
 | Phase 4: Deploy & API        | ⏸️ Deferred | ~25h     | Async API live on Cloud Run, Cloud Tasks, CI/CD, doc upload (after all Pillars done) |
-| **Total**                    | **4 weeks** | **~98h** | **Production live**                                                               |
+| **Total**                    | **4 weeks** | **~98h** | **Production live**                                                                  |
 
 ## Risks & Mitigation
 

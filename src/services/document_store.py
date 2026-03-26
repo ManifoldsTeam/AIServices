@@ -6,7 +6,7 @@ Handles document lifecycle:
 3. Track document records
 
 GCS Path Structure:
-- System docs: gs://bucket/system/{date}/{session_id}/{filename}
+- System docs: gs://bucket/system/{grade}/{doc_type}/{subject}/{filename}
 - User docs:   gs://bucket/user/{user_id}/{date}/{session_id}/{filename}
 
 Metadata attached to GCS objects:
@@ -14,6 +14,7 @@ Metadata attached to GCS objects:
 - upload_date: ISO date
 - session_id: Upload session identifier
 - scope: "user" | "system"
+- doc_type: Document type (sgk, sbt, de-thi, etc.)
 - subject: Optional subject classification
 - grade: Optional grade level
 """
@@ -69,6 +70,9 @@ def build_gcs_path(
     filename: str,
     session_id: str,
     scope: str = "user",
+    grade: str | None = None,
+    doc_type: str | None = None,
+    subject: str | None = None,
 ) -> str:
     """Build GCS object path based on scope.
 
@@ -77,6 +81,9 @@ def build_gcs_path(
         filename: Original filename.
         session_id: Upload session identifier.
         scope: "user" or "system".
+        grade: Grade level (e.g. "lop-10"). Used for system scope structured path.
+        doc_type: Document type (e.g. "sgk", "sbt"). Used for system scope structured path.
+        subject: Subject (e.g. "toan"). Used for system scope structured path.
 
     Returns:
         GCS object path (without gs://bucket/ prefix).
@@ -84,6 +91,10 @@ def build_gcs_path(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     if scope == "system":
+        # Structured path when grade/doc_type/subject are provided
+        if grade and doc_type and subject:
+            return f"system/{grade}/{doc_type}/{subject}/{filename}"
+        # Fallback to date-based path for API uploads without full classification
         return f"system/{today}/{session_id}/{filename}"
     else:
         return f"user/{user_id}/{today}/{session_id}/{filename}"
@@ -97,6 +108,7 @@ def upload_document(
     scope: str = "user",
     subject: str | None = None,
     grade: str | None = None,
+    doc_type: str | None = None,
 ) -> dict:
     """Upload a document to GCS with metadata.
 
@@ -131,7 +143,15 @@ def upload_document(
         raise ValueError(error)
 
     # Build path
-    gcs_path = build_gcs_path(user_id, filename, session_id, scope)
+    gcs_path = build_gcs_path(
+        user_id,
+        filename,
+        session_id,
+        scope,
+        grade=grade,
+        doc_type=doc_type,
+        subject=subject,
+    )
     metadata_user_id = SYSTEM_USER_ID if scope == "system" else user_id
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -164,6 +184,8 @@ def upload_document(
         blob.metadata["subject"] = subject
     if grade:
         blob.metadata["grade"] = grade
+    if doc_type:
+        blob.metadata["doc_type"] = doc_type
 
     blob.upload_from_string(file_content, content_type=content_type)
 
