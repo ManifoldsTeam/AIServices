@@ -10,7 +10,6 @@ This agent uses a two-phase approach:
 2. Generates content using Gemini + Code Execution (verifies calculations)
 3. Parses the response into structured ContentItemList format
 4. Includes computation traces for math problems
-Sweet Girlfriend Holds You During a Scary Movie | Comforting You | Pet Names & Babying | Audio RP
 
 Performance optimizations:
 - Code traces truncated to MAX_CODE_TRACES_CHARS before parsing
@@ -279,7 +278,9 @@ async def _parse_batch(
     ]
 
     for attempt in range(MAX_PARSE_RETRIES):
-        batch_result = await rate_limited_llm_call(structured_llm.ainvoke(batch_messages))
+        batch_result = await rate_limited_llm_call(
+            structured_llm.ainvoke(batch_messages)
+        )
         if batch_result is not None and isinstance(batch_result, ContentItemList):
             logger.info(
                 "math_agent_batch_parsed",
@@ -430,7 +431,9 @@ async def math_agent_node(state: AgentState) -> dict:
                 context=context,
             )
 
-            raw_response: AIMessage = await rate_limited_llm_call(code_exec_llm.ainvoke(generation_messages))
+            raw_response: AIMessage = await rate_limited_llm_call(
+                code_exec_llm.ainvoke(generation_messages)
+            )
             raw_text, code_traces = _extract_content_with_traces(raw_response)
 
             logger.info(

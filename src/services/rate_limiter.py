@@ -92,7 +92,9 @@ class CircuitBreaker:
             # Half-open: allow one attempt
             self._tripped_at = None
             self._consecutive_failures = 0
-            logger.info("circuit_breaker_half_open", msg="allowing retry after cooldown")
+            logger.info(
+                "circuit_breaker_half_open", msg="allowing retry after cooldown"
+            )
             return False
         return True
 

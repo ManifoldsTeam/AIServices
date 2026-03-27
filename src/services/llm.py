@@ -17,6 +17,7 @@ Usage:
 
 import structlog
 from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.config import get_settings
 from src.config.constants import (
@@ -35,7 +36,7 @@ logger = structlog.get_logger(__name__)
 def get_generation_llm(
     temperature: float = GENERATION_TEMPERATURE,
     max_output_tokens: int = GENERATION_MAX_TOKENS,
-) -> ChatVertexAI:
+) -> ChatGoogleGenerativeAI:
     """Get LLM for content generation tasks.
 
     Uses Gemini model with higher creativity settings for
@@ -46,7 +47,7 @@ def get_generation_llm(
         max_output_tokens: Maximum tokens in response.
 
     Returns:
-        Configured ChatVertexAI instance for generation.
+        Configured ChatGoogleGenerativeAI instance for generation.
     """
     settings = get_settings()
     location = settings.generation_model_location or settings.gcp_location
@@ -59,7 +60,7 @@ def get_generation_llm(
         location=location,
     )
 
-    return ChatVertexAI(
+    return ChatGoogleGenerativeAI(
         model_name=settings.generation_model,
         project=settings.gcp_project_id,
         location=location,
@@ -72,7 +73,7 @@ def get_generation_llm(
 def get_review_llm(
     temperature: float = REVIEW_TEMPERATURE,
     max_output_tokens: int = REVIEW_MAX_TOKENS,
-) -> ChatVertexAI:
+) -> ChatGoogleGenerativeAI:
     """Get LLM for review/validation tasks.
 
     Uses Gemini Flash with low temperature for deterministic,
@@ -83,7 +84,7 @@ def get_review_llm(
         max_output_tokens: Generally smaller for review outputs.
 
     Returns:
-        Configured ChatVertexAI instance for review.
+        Configured ChatGoogleGenerativeAI instance for review.
     """
     settings = get_settings()
     location = settings.review_model_location or settings.gcp_location
@@ -96,7 +97,7 @@ def get_review_llm(
         location=location,
     )
 
-    return ChatVertexAI(
+    return ChatGoogleGenerativeAI(
         model_name=settings.review_model,
         project=settings.gcp_project_id,
         location=location,
@@ -110,7 +111,7 @@ def get_structured_llm(
     output_schema: type,
     temperature: float = STRUCTURED_TEMPERATURE,
     max_output_tokens: int = STRUCTURED_MAX_TOKENS,
-) -> ChatVertexAI:
+) -> ChatGoogleGenerativeAI:
     """Get LLM with structured output for a given Pydantic schema.
 
     Wraps `with_structured_output()` for use cases where we need
@@ -122,7 +123,7 @@ def get_structured_llm(
         max_output_tokens: Max tokens for the response.
 
     Returns:
-        ChatVertexAI with structured output support.
+        ChatGoogleGenerativeAI with structured output support.
     """
     llm = get_generation_llm(
         temperature=temperature,
