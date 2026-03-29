@@ -41,3 +41,4 @@
 | 2026-03-27 | 19:44 | Refactor timeline + pass rate analysis        | ✅ Timeline → summary+daily, 5 root causes identified                                        | [chi tiết](../../docs/timeline/27-03-2026.md) |
 | 2026-03-29 | 09:30 | Implement P0–P4 pipeline fixes                | ✅ 5 root causes fixed, 31 unit tests pass                                                   | [chi tiết](../../docs/timeline/29-03-2026.md) |
 | 2026-03-29 | 12:20 | Tối ưu high_application + auto suspicious RCA | ✅ Thêm exemplar theo domain, lọc feedback theo difficulty, rerun high_application đạt 10.0% | [chi tiết](../../docs/timeline/29-03-2026.md) |
+| 2026-03-29 | 20:49 | Pipeline 100% delivery — 5 fixes              | ✅ ALL 4 difficulty levels 100% delivery (recall/comprehension/application/high_application)  | [chi tiết](../../docs/timeline/29-03-2026.md) |
