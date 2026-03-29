@@ -221,9 +221,9 @@ def review_router(state: AgentState) -> str:
     )
 
     # Pass conditions:
-    # 1. Have enough reviewed items (at least 70% of requested)
-    # 2. Or reached max iterations
-    min_required = int(request.num_questions * 0.7)
+    # 1. Have enough reviewed items (100% of requested)
+    # 2. Or reached max iterations (safety valve)
+    min_required = request.num_questions
 
     if len(reviewed_items) >= min_required:
         logger.info("review_router_pass", reason="sufficient_items")

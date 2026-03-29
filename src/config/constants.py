@@ -50,7 +50,7 @@ OVERSHOOT_BY_DIFFICULTY: dict[str, float] = {
     "recall": 1.1,
     "comprehension": 1.2,
     "application": 1.4,
-    "high_application": 2.0,
+    "high_application": 2.5,
 }
 """Difficulty-specific overshoot ratios. Higher difficulty → more buffer needed."""
 

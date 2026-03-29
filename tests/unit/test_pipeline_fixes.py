@@ -276,14 +276,14 @@ class TestMathAgentRetryLogic:
         assert num_still_needed == 1
 
     def test_high_application_uses_2x_overshoot(self):
-        """high_application should use 2.0x overshoot."""
+        """high_application should use 2.5x overshoot."""
         from src.config.constants import OVERSHOOT_BY_DIFFICULTY
 
         request = self._make_request(difficulty="high_application", num_questions=10)
         overshoot = OVERSHOOT_BY_DIFFICULTY.get(request.difficulty.value, 1.3)
         num_to_generate = math.ceil(10 * overshoot)
 
-        assert num_to_generate == 20  # 10 * 2.0
+        assert num_to_generate == 25  # 10 * 2.5
 
     def test_recall_uses_minimal_overshoot(self):
         """recall should use 1.1x overshoot."""

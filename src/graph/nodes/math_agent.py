@@ -728,10 +728,14 @@ async def math_agent_node(state: AgentState) -> dict:
     else:
         num_still_needed = request.num_questions
 
-    # P2: Adaptive overshoot by difficulty
+    # P2: Adaptive overshoot by difficulty with escalation on retry
     difficulty_val = request.difficulty.value
-    overshoot = OVERSHOOT_BY_DIFFICULTY.get(difficulty_val, YIELD_OVERSHOOT_RATIO)
+    base_overshoot = OVERSHOOT_BY_DIFFICULTY.get(difficulty_val, YIELD_OVERSHOOT_RATIO)
+    # C3: Escalate overshoot on retries — each iteration more aggressive
+    overshoot = base_overshoot * (1 + 0.3 * iteration_count)
     num_to_generate = math.ceil(num_still_needed * overshoot)
+    # C5: Minimum generation floor — avoid generating too few on small gaps
+    num_to_generate = max(num_to_generate, num_still_needed + 3)
 
     # P0: Build rejection feedback for retry iterations
     feedback_section = (
