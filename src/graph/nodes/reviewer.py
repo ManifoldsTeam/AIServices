@@ -10,12 +10,13 @@ Uses Gemini Flash for fast review (cost-effective).
 """
 
 import structlog
-from langchain_google_vertexai import ChatVertexAI
+from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from src.graph.state import AgentState, MAX_REVIEW_ITERATIONS
 from src.config import get_settings
+from src.config.constants import REVIEW_THRESHOLD_BY_DIFFICULTY
 from src.services.llm import get_review_llm
 from src.services.rate_limiter import rate_limited_llm_call
 
@@ -37,6 +38,28 @@ class ReviewBatch(BaseModel):
     reviews: list[ReviewResult]
 
 
+# P3: Difficulty-specific scoring guidance for the reviewer
+REVIEWER_DIFFICULTY_GUIDANCE: dict[str, str] = {
+    "recall": (
+        "\nDIFFICULTY GUIDANCE: For RECALL questions, be strict on factual accuracy. "
+        "Simple recognition/recall is the expected cognitive level — do not penalize for low complexity."
+    ),
+    "comprehension": (
+        "\nDIFFICULTY GUIDANCE: For COMPREHENSION questions, verify they require genuine "
+        "understanding or interpretation, not just recall of facts."
+    ),
+    "application": (
+        "\nDIFFICULTY GUIDANCE: For APPLICATION questions, verify multi-step problem solving. "
+        "Accept well-structured routine problems that apply known procedures."
+    ),
+    "high_application": (
+        "\nDIFFICULTY GUIDANCE: For HIGH_APPLICATION questions, accept questions demonstrating "
+        "genuine cross-concept synthesis or non-routine reasoning. Be lenient on perfect cognitive "
+        "level match — prioritize accuracy and educational value over novelty."
+    ),
+}
+
+
 REVIEWER_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
@@ -55,9 +78,9 @@ Review each content item and evaluate on these criteria:
    - high_application: Should require non-routine reasoning or cross-concept synthesis
 4. **Vietnamese Quality** (15%): Is the Vietnamese natural, grammatically correct, and uses proper STEM terminology?
 
-PASS if score >= 0.7
-REJECT if score < 0.7
-
+PASS if score >= {pass_threshold}
+REJECT if score < {pass_threshold}
+{difficulty_guidance}
 Be strict on accuracy (especially calculations) but fair on language quality.""",
         ),
         (
@@ -76,7 +99,7 @@ For each item (0-indexed), provide:
 )
 
 
-def _get_llm() -> ChatVertexAI:
+def _get_llm() -> BaseChatModel:
     """Get Gemini Flash LLM for fast review."""
     return get_review_llm(temperature=0.0, max_output_tokens=4096)
 
@@ -118,6 +141,11 @@ async def reviewer_node(state: AgentState) -> dict:
     llm = _get_llm()
     structured_llm = llm.with_structured_output(ReviewBatch)
 
+    # P3: Difficulty-aware review threshold and guidance
+    difficulty_val = state["request"].difficulty.value
+    pass_threshold = REVIEW_THRESHOLD_BY_DIFFICULTY.get(difficulty_val, 0.7)
+    difficulty_guidance = REVIEWER_DIFFICULTY_GUIDANCE.get(difficulty_val, "")
+
     chain = REVIEWER_PROMPT | structured_llm
 
     try:
@@ -126,6 +154,8 @@ async def reviewer_node(state: AgentState) -> dict:
                 {
                     "num_items": len(content_items),
                     "items_json": items_json,
+                    "pass_threshold": pass_threshold,
+                    "difficulty_guidance": difficulty_guidance,
                 }
             )
         )
@@ -137,6 +167,7 @@ async def reviewer_node(state: AgentState) -> dict:
             if review.item_index < len(content_items):
                 item = content_items[review.item_index].copy()
                 item["review_score"] = review.score
+                item["difficulty"] = difficulty_val
 
                 if review.passed:
                     reviewed_items.append(item)
