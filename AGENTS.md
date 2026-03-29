@@ -41,7 +41,12 @@ This project uses ai-devkit for structured AI-assisted development. Phase docume
 
 ### Timeline Tracking (REQUIRED)
 
-After completing any significant action (bug fix, feature implementation, refactoring, data migration, infrastructure change), the agent **MUST** append a new entry to `docs/ai/timeline.md` following the template format defined in that file.
+After completing any significant action, the agent **MUST**:
+
+1. Add a **summary row** to the table in `docs/ai/timeline.md`
+2. Add a **detailed entry** in the daily file `docs/timeline/DD-MM-YYYY.md`
+
+Timeline entries **MUST include hour precision** (`HH:MM`). Daily detail files use **hour only** since the date is in the filename.
 
 **What counts as "significant":**
 
@@ -51,7 +56,18 @@ After completing any significant action (bug fix, feature implementation, refact
 - New features or endpoints deployed
 - Configuration or infrastructure changes
 
-**Entry must include:** Vấn đề (problem), Nguyên nhân (root cause), Hành động (actions taken), Kết quả (outcome), and References (files changed with descriptions).
+**Summary row format** (`docs/ai/timeline.md`):
+
+```
+| YYYY-MM-DD | HH:MM | Tiêu đề | Kết quả ngắn | [chi tiết](../../docs/timeline/DD-MM-YYYY.md) |
+```
+
+**Daily detail format** (`docs/timeline/DD-MM-YYYY.md`):
+
+```
+### HH:MM — [Tiêu đề]
+**Vấn đề:** ... **Nguyên nhân:** ... **Hành động:** ... **Kết quả:** ... **References:** ...
+```
 
 ### Checklist Verification & Documentation Updates (REQUIRED)
 
@@ -201,6 +217,22 @@ The AI assistant should proactively use knowledge memory throughout all interact
 - Follow the testing strategy defined in `docs/ai/testing/`
 - Use `/writing-test` to generate unit and integration tests targeting 100% coverage
 - Ensure code passes all tests before considering it complete
+
+### Mandatory Testing After Implementation (REQUIRED)
+
+After completing any implementation task, the agent **MUST** create and run tests before considering the work done:
+
+1. **Unit Tests** — Test each changed module in isolation with mocks. Cover: normal flow, edge cases, error handling.
+2. **Integration Tests** — Test interactions between changed modules (e.g., graph nodes using cached LLM service).
+3. **System Tests** — Test the full import chain and end-to-end contract (e.g., all singletons work, all modules importable).
+
+**Test file naming convention:**
+
+- Unit: `tests/unit/test_{module_name}.py`
+- Integration: `tests/integration/test_{feature_name}.py`
+- System: `tests/system/test_{feature_name}.py`
+
+**All tests must pass (`pytest`) before the task is marked as completed.**
 
 ### Notebook Testing Workflow (REQUIRED)
 

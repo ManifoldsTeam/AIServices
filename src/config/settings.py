@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     # Current GA: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro
     # Preview (3.x): gemini-3-flash-preview, gemini-3.1-pro-preview,
     #                 gemini-3.1-flash-lite-preview
+    # Upgraded 2026-03-28: gemini-2.5-flash → gemini-3-flash-preview
+    # Reason: Pro-level reasoning for high_application content generation
     generation_model: str = "gemini-2.5-flash"
     generation_model_location: str | None = None  # Falls back to gcp_location
     review_model: str = "gemini-3.1-flash-lite-preview"

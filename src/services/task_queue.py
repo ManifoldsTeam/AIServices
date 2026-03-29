@@ -26,10 +26,17 @@ from src.config import get_settings
 
 logger = structlog.get_logger(__name__)
 
+# Module-level singleton (lazy init)
+_tasks_client: tasks_v2.CloudTasksClient | None = None
+
 
 def _get_client() -> tasks_v2.CloudTasksClient:
-    """Get Cloud Tasks client."""
-    return tasks_v2.CloudTasksClient()
+    """Get Cloud Tasks client (singleton, created once per process)."""
+    global _tasks_client
+    if _tasks_client is None:
+        _tasks_client = tasks_v2.CloudTasksClient()
+        logger.info("cloud_tasks_client_init")
+    return _tasks_client
 
 
 def enqueue_generation(

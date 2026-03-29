@@ -10,7 +10,7 @@ Phase 2+: Will route to Story Agent, Visual Agent, Structure Agent
 """
 
 import structlog
-from langchain_google_vertexai import ChatVertexAI
+from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -57,7 +57,7 @@ What is the content type?""",
 )
 
 
-def _get_llm() -> ChatVertexAI:
+def _get_llm() -> BaseChatModel:
     """Get Gemini LLM for supervisor classification."""
     return get_review_llm(temperature=0, max_output_tokens=10)
 
