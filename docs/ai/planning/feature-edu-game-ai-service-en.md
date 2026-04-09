@@ -15,6 +15,7 @@ description: Break down work into actionable tasks and estimate timeline
 - [x] **M1: PoC & Scaffold** (Week 1) ✅ Verified 2026-03-09 — AI Search with 225 PDFs indexed, LangGraph skeleton, services scaffold
 - [x] **M2: Core LangGraph Pipeline** (Week 2) ✅ Verified 2026-03-11 — Full graph implemented: Supervisor → Math Agent → Reviewer → Formatter. All services tested via notebooks.
 - [x] **M3: Quality & Tuning** (Week 3) ✅ Verified 2026-03-22 — All pipeline fixes done, accuracy 100/100 = 100% (target ≥ 98%)
+- [ ] **M3.5: Pipeline Performance Optimization** — 100% delivery validated (2026-04-09). Performance optimization plan: 3 tiers, target high_application ≤400s. See [optimization plan](pipeline-performance-optimization-plan.md)
 - [ ] **M4: Deploy & API** — ⏸️ **DEFERRED** — Will be done last, after all main content workflows (Pillars 1-4) are complete. Currently only Pillar 1 (Math/Physics/Chemistry) is implemented.
 
 ## Task Breakdown

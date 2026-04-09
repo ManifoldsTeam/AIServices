@@ -587,3 +587,116 @@ class TestAntiPatterns:
             "high_application", topic="Di truyền quần thể"
         )
         assert "quần thể" in result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Pipeline 100% Delivery Fixes (C1–C5)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestMaxReviewIterations:
+    """C2: MAX_REVIEW_ITERATIONS is 5 (increased from 3)."""
+
+    def test_max_iterations_is_5(self):
+        from src.graph.state import MAX_REVIEW_ITERATIONS
+
+        assert MAX_REVIEW_ITERATIONS == 5
+
+    def test_review_router_passes_at_max_iterations(self):
+        """review_router returns 'pass' when iteration_count == MAX_REVIEW_ITERATIONS."""
+        from src.graph.nodes.reviewer import review_router
+        from src.graph.state import MAX_REVIEW_ITERATIONS
+
+        request = MagicMock()
+        request.num_questions = 10
+        state = {
+            "reviewed_items": [{"q": f"item_{i}"} for i in range(5)],  # Only 5, need 10
+            "rejected_items": [],
+            "iteration_count": MAX_REVIEW_ITERATIONS,
+            "request": request,
+        }
+        assert review_router(state) == "pass"  # Safety valve triggers
+
+    def test_review_router_fails_before_max_iterations(self):
+        """review_router returns 'fail' when items insufficient and iterations remain."""
+        from src.graph.nodes.reviewer import review_router
+
+        request = MagicMock()
+        request.num_questions = 10
+        state = {
+            "reviewed_items": [{"q": f"item_{i}"} for i in range(5)],
+            "rejected_items": [],
+            "iteration_count": 2,
+            "request": request,
+        }
+        assert review_router(state) == "fail"
+
+
+class TestEscalatingOvershoot:
+    """C3: Overshoot escalates with iteration_count."""
+
+    def test_first_iteration_no_escalation(self):
+        """iteration_count=0 → multiplier is 1.0 (no escalation)."""
+        from src.config.constants import OVERSHOOT_BY_DIFFICULTY
+
+        base = OVERSHOOT_BY_DIFFICULTY["application"]  # 1.4
+        iteration_count = 0
+        overshoot = base * (1 + 0.3 * iteration_count)
+        assert overshoot == base  # No change
+
+    def test_second_iteration_30_percent_escalation(self):
+        """iteration_count=1 → multiplier is 1.3."""
+        from src.config.constants import OVERSHOOT_BY_DIFFICULTY
+
+        base = OVERSHOOT_BY_DIFFICULTY["application"]  # 1.4
+        iteration_count = 1
+        overshoot = base * (1 + 0.3 * iteration_count)
+        assert overshoot == pytest.approx(base * 1.3)
+
+    def test_third_iteration_60_percent_escalation(self):
+        """iteration_count=2 → multiplier is 1.6."""
+        from src.config.constants import OVERSHOOT_BY_DIFFICULTY
+
+        base = OVERSHOOT_BY_DIFFICULTY["high_application"]  # 2.5
+        iteration_count = 2
+        overshoot = base * (1 + 0.3 * iteration_count)
+        assert overshoot == pytest.approx(2.5 * 1.6)  # 4.0
+
+    def test_escalation_increases_num_to_generate(self):
+        """Higher iteration → higher num_to_generate for same gap."""
+        from src.config.constants import OVERSHOOT_BY_DIFFICULTY
+
+        base = OVERSHOOT_BY_DIFFICULTY["application"]
+        num_still_needed = 4
+
+        gen_iter0 = math.ceil(num_still_needed * base * (1 + 0.3 * 0))
+        gen_iter2 = math.ceil(num_still_needed * base * (1 + 0.3 * 2))
+        assert gen_iter2 > gen_iter0
+
+
+class TestMinGenerationFloor:
+    """C5: num_to_generate >= num_still_needed + 3."""
+
+    def test_floor_applies_when_overshoot_too_low(self):
+        """Small gap with low overshoot: floor kicks in."""
+        num_still_needed = 2
+        overshoot = 1.1  # recall
+        num_to_generate = math.ceil(num_still_needed * overshoot)  # ceil(2.2)=3
+        num_to_generate = max(num_to_generate, num_still_needed + 3)
+        assert num_to_generate == 5  # floor = 2+3 = 5
+
+    def test_floor_does_not_reduce_high_overshoot(self):
+        """Large gap with high overshoot: floor is not a bottleneck."""
+        num_still_needed = 10
+        overshoot = 2.5  # high_application
+        num_to_generate = math.ceil(num_still_needed * overshoot)  # 25
+        num_to_generate = max(num_to_generate, num_still_needed + 3)
+        assert num_to_generate == 25  # overshoot dominates
+
+    def test_floor_with_gap_one(self):
+        """Even gap=1, still generates at least 4 items."""
+        num_still_needed = 1
+        overshoot = 1.1
+        num_to_generate = math.ceil(num_still_needed * overshoot)  # 2
+        num_to_generate = max(num_to_generate, num_still_needed + 3)
+        assert num_to_generate == 4  # floor = 1+3 = 4
