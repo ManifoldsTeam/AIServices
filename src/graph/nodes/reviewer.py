@@ -200,7 +200,7 @@ def review_router(state: AgentState) -> str:
 
     Returns:
         - "pass": Enough items passed, proceed to formatter
-        - "fail": Need more items, retry with supervisor (if iterations remain)
+        - "fail": Need more items, retry with math_agent (if iterations remain)
     """
     reviewed_items = state.get("reviewed_items", [])
     rejected_items = state.get("rejected_items", [])

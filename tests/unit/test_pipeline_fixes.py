@@ -410,14 +410,14 @@ class TestMathAgentPromptTemplate:
 # ═══════════════════════════════════════════════════════════════════════
 
 
-class TestSequentialBatchParsing:
-    """P4: _parse_raw_content uses sequential parsing for large batches."""
+class TestParallelBatchParsing:
+    """T-OPT-1.1: _parse_raw_content uses parallel parsing for large batches."""
 
     @pytest.mark.asyncio
     @patch(f"{MATH_AGENT_MOD}.get_generation_llm")
     @patch(f"{MATH_AGENT_MOD}.rate_limited_llm_call")
-    async def test_large_batch_parses_sequentially(self, mock_rate_limit, mock_get_llm):
-        """Verify that large batches are NOT parsed with asyncio.gather."""
+    async def test_large_batch_parses_all_batches(self, mock_rate_limit, mock_get_llm):
+        """Verify that large batches produce correct number of parse calls."""
         from src.graph.nodes.math_agent import (
             ContentItemList,
             GeneratedContentItem,
@@ -439,7 +439,7 @@ class TestSequentialBatchParsing:
         # Parse 14 items (2 batches of 7)
         result = await _parse_raw_content("raw text", ["Code:\nprint(1)"], 14)
 
-        # Should have been called sequentially (2 calls, not via gather)
+        # Should have 2 batch calls (parallel via asyncio.gather)
         assert mock_rate_limit.call_count == 2
         assert len(result) == 2  # 1 item per batch result
 

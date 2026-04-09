@@ -621,9 +621,20 @@ async def _parse_batch(
     ]
 
     for attempt in range(MAX_PARSE_RETRIES):
-        batch_result = await rate_limited_llm_call(
-            structured_llm.ainvoke(batch_messages)
-        )
+        try:
+            batch_result = await rate_limited_llm_call(
+                structured_llm.ainvoke(batch_messages)
+            )
+        except Exception as e:
+            logger.warning(
+                "math_agent_batch_parse_exception",
+                batch=batch_idx + 1,
+                attempt=attempt + 1,
+                error=str(e),
+            )
+            if attempt < MAX_PARSE_RETRIES - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+            continue
         if batch_result is not None and isinstance(batch_result, ContentItemList):
             logger.info(
                 "math_agent_batch_parsed",
@@ -680,22 +691,38 @@ async def _parse_raw_content(
                 await asyncio.sleep(0.5 * (attempt + 1))
         return []
 
-    # Large batch — split into chunks and parse SEQUENTIALLY (P4: reliability)
+    # Large batch — split into chunks and parse in PARALLEL (T-OPT-1.1)
     num_batches = (num_q + PARSE_BATCH_SIZE - 1) // PARSE_BATCH_SIZE
-    all_items: list[GeneratedContentItem] = []
-    for batch_idx in range(num_batches):
+    sem = asyncio.Semaphore(3)  # limit concurrent LLM calls
+
+    async def _bounded_parse(batch_idx: int) -> list[GeneratedContentItem]:
         start = batch_idx * PARSE_BATCH_SIZE + 1
         end = min((batch_idx + 1) * PARSE_BATCH_SIZE, num_q)
-        batch_items = await _parse_batch(
-            structured_llm,
-            batch_idx,
-            start,
-            end,
-            num_q,
-            raw_text,
-            code_traces_section,
-        )
-        all_items.extend(batch_items)
+        async with sem:
+            try:
+                return await _parse_batch(
+                    structured_llm,
+                    batch_idx,
+                    start,
+                    end,
+                    num_q,
+                    raw_text,
+                    code_traces_section,
+                )
+            except Exception as e:
+                logger.warning(
+                    "math_agent_bounded_parse_exception",
+                    batch=batch_idx + 1,
+                    error=str(e),
+                )
+                return []
+
+    batch_results = await asyncio.gather(
+        *(_bounded_parse(i) for i in range(num_batches))
+    )
+    all_items: list[GeneratedContentItem] = []
+    for items in batch_results:
+        all_items.extend(items)
     return all_items
 
 
@@ -758,19 +785,29 @@ async def math_agent_node(state: AgentState) -> dict:
         doc_scope=doc_scope,
     )
 
-    # Step 1: Retrieve context from Vertex AI Search
-    query = f"{request.topic or 'STEM'} {request.difficulty.value} level educational content"
-    search_context, search_sources = await retrieve_context(
-        user_id=request.user_id,
-        query=query,
-        doc_scope=doc_scope,
-        max_documents=10,
-    )
-
-    logger.info(
-        "math_agent_context_retrieved",
-        context_chunks=len(search_context),
-    )
+    # Step 1: Retrieve context from Vertex AI Search (T-OPT-1.2: cache on retry)
+    cached_context = state.get("search_context")
+    cached_sources = state.get("search_sources")
+    if iteration_count > 0 and cached_context:
+        search_context = cached_context
+        search_sources = cached_sources or []
+        logger.info(
+            "math_agent_using_cached_context",
+            context_chunks=len(search_context),
+            iteration=iteration_count,
+        )
+    else:
+        query = f"{request.topic or 'STEM'} {request.difficulty.value} level educational content"
+        search_context, search_sources = await retrieve_context(
+            user_id=request.user_id,
+            query=query,
+            doc_scope=doc_scope,
+            max_documents=10,
+        )
+        logger.info(
+            "math_agent_context_retrieved",
+            context_chunks=len(search_context),
+        )
 
     # Build context string
     context = (

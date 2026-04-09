@@ -8,7 +8,7 @@ The graph flow:
 
 Conditional edges:
 - supervisor → agent (based on content_type)
-- reviewer → formatter (pass) or supervisor (fail, up to MAX_ITERATIONS)
+- reviewer → formatter (pass) or math_agent (fail, skip supervisor on retry)
 """
 
 import structlog
@@ -71,13 +71,13 @@ def create_graph() -> StateGraph:
     # graph.add_edge("visual_agent", "reviewer")
     # graph.add_edge("structure_agent", "reviewer")
 
-    # Reviewer → Formatter (pass) or Supervisor (fail - feedback loop)
+    # Reviewer → Formatter (pass) or Math Agent (fail - T-OPT-1.3: skip supervisor on retry)
     graph.add_conditional_edges(
         "reviewer",
         review_router,
         {
             "pass": "formatter",
-            "fail": "supervisor",  # Retry with feedback
+            "fail": "math_agent",  # Skip supervisor on retry — content_type already set
         },
     )
 
