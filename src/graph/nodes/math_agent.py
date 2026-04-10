@@ -54,6 +54,14 @@ MAX_GENERATION_RETRIES: int = 2
 """Number of times to retry Phase 1 code execution within math_agent before giving up.
 Replaces full pipeline restart on parse failure."""
 
+MAX_PARSE_ONLY_RETRIES: int = 2
+"""Times to retry parsing the same raw text before re-generating (T-OPT-2.1).
+Saves 30-60s of code execution per retry when only parsing fails."""
+
+MICRO_BATCH_THRESHOLD: int = 12
+"""Split generation into 2 parallel micro-batches when num_to_generate exceeds this (T-OPT-2.3).
+Each micro-batch runs generate+parse independently, then results are merged."""
+
 
 class GeneratedContentItem(BaseModel):
     """Schema for LLM structured output."""
@@ -726,13 +734,99 @@ async def _parse_raw_content(
     return all_items
 
 
+async def _generate_and_parse(
+    code_exec_llm,
+    num_to_generate: int,
+    difficulty_val: str,
+    topic: str,
+    context: str,
+    feedback_section: str,
+    exemplars_section: str,
+) -> list[GeneratedContentItem]:
+    """Generate content via code execution and parse into structured items.
+
+    T-OPT-2.1: On parse failure, retries parsing with cached raw text before
+    falling back to expensive re-generation (saves 30-60s per retry).
+
+    Returns parsed items or empty list if all attempts fail.
+    """
+    for gen_attempt in range(MAX_GENERATION_RETRIES):
+        try:
+            # Phase 1: Generate with code execution (expensive — 30-60s)
+            generation_messages = MATH_AGENT_PROMPT.format_messages(
+                num_questions=num_to_generate,
+                difficulty=difficulty_val,
+                topic=topic,
+                context=context,
+                feedback_section=feedback_section,
+                exemplars_section=exemplars_section,
+            )
+
+            raw_response: AIMessage = await rate_limited_llm_call(
+                code_exec_llm.ainvoke(generation_messages)
+            )
+            raw_text, code_traces = _extract_content_with_traces(raw_response)
+
+            logger.info(
+                "math_agent_code_execution_done",
+                text_length=len(raw_text),
+                code_traces_count=len(code_traces),
+                generation_attempt=gen_attempt + 1,
+                batch_size=num_to_generate,
+            )
+
+            # Early termination: skip parsing if code execution returned nothing
+            if not raw_text.strip():
+                logger.warning(
+                    "math_agent_empty_generation",
+                    generation_attempt=gen_attempt + 1,
+                )
+                continue  # Retry Phase 1
+
+            # Phase 2: Parse with retry — reuse cached raw text (T-OPT-2.1)
+            for parse_attempt in range(MAX_PARSE_ONLY_RETRIES):
+                all_parsed_items = await _parse_raw_content(
+                    raw_text, code_traces, num_to_generate
+                )
+                if all_parsed_items:
+                    logger.info(
+                        "math_agent_parse_succeeded",
+                        items=len(all_parsed_items),
+                        generation_attempt=gen_attempt + 1,
+                        parse_attempt=parse_attempt + 1,
+                    )
+                    return all_parsed_items
+
+                logger.warning(
+                    "math_agent_parse_only_retry",
+                    generation_attempt=gen_attempt + 1,
+                    parse_attempt=parse_attempt + 1,
+                    max_parse_retries=MAX_PARSE_ONLY_RETRIES,
+                )
+
+            logger.warning(
+                "math_agent_all_parse_retries_failed_regenerating",
+                generation_attempt=gen_attempt + 1,
+            )
+
+        except Exception as e:
+            logger.error(
+                "math_agent_generation_error",
+                error=str(e),
+                generation_attempt=gen_attempt + 1,
+            )
+
+    return []
+
+
 async def math_agent_node(state: AgentState) -> dict:
     """Generate STEM educational content items with code execution.
 
-    Uses a two-phase approach with internal retry:
+    Uses a two-phase approach with optimized retry:
     1. Generate content with Code Execution for verified calculations
     2. Parse the response into structured ContentItemList format
-    3. If parsing fails, retry Phase 1+2 within this node (avoids full pipeline restart)
+    3. T-OPT-2.1: On parse failure, retry parsing with cached raw text
+    4. T-OPT-2.3: For large batches, split into parallel micro-batches
 
     Reads:
         - state["request"]: GenerationRequest
@@ -816,76 +910,54 @@ async def math_agent_node(state: AgentState) -> dict:
         else "No specific context available. Generate based on general knowledge."
     )
 
-    # Phase 1+2 with internal retry on parse failure
-    all_parsed_items: list[GeneratedContentItem] = []
+    # Phase 1+2: Generate + parse (T-OPT-2.1 parse retry, T-OPT-2.3 parallel micro-batches)
+    llm = _get_llm()
+    code_exec_llm = llm.bind_tools([{"code_execution": {}}])
+    topic_str = request.topic or "General STEM"
 
-    for gen_attempt in range(MAX_GENERATION_RETRIES):
-        try:
-            # Phase 1: Generate with code execution
-            llm = _get_llm()
-            code_exec_llm = llm.bind_tools([{"code_execution": {}}])
-
-            generation_messages = MATH_AGENT_PROMPT.format_messages(
-                num_questions=num_to_generate,
-                difficulty=difficulty_val,
-                topic=request.topic or "General STEM",
-                context=context,
-                feedback_section=feedback_section,
-                exemplars_section=exemplars_section,
-            )
-
-            raw_response: AIMessage = await rate_limited_llm_call(
-                code_exec_llm.ainvoke(generation_messages)
-            )
-            raw_text, code_traces = _extract_content_with_traces(raw_response)
-
-            logger.info(
-                "math_agent_code_execution_done",
-                text_length=len(raw_text),
-                code_traces_count=len(code_traces),
-                generation_attempt=gen_attempt + 1,
-            )
-
-            # Early termination: skip parsing if code execution returned nothing
-            if not raw_text.strip():
-                logger.warning(
-                    "math_agent_empty_generation",
-                    generation_attempt=gen_attempt + 1,
-                )
-                continue  # Retry Phase 1
-
-            # Phase 2: Parse into structured output (parallel batches, truncated traces)
-            all_parsed_items = await _parse_raw_content(
-                raw_text, code_traces, num_to_generate
-            )
-
-            if all_parsed_items:
-                logger.info(
-                    "math_agent_parse_succeeded",
-                    items=len(all_parsed_items),
-                    generation_attempt=gen_attempt + 1,
-                )
-                break  # Success — exit retry loop
-
-            logger.warning(
-                "math_agent_parse_failed_retrying",
-                generation_attempt=gen_attempt + 1,
-                max_attempts=MAX_GENERATION_RETRIES,
-            )
-
-        except Exception as e:
-            logger.error(
-                "math_agent_generation_error",
-                error=str(e),
-                generation_attempt=gen_attempt + 1,
-            )
-            if gen_attempt == MAX_GENERATION_RETRIES - 1:
-                return {
-                    "search_context": search_context,
-                    "search_sources": search_sources,
-                    "content_items": [],
-                    "errors": [f"Math agent generation failed: {str(e)}"],
-                }
+    if num_to_generate > MICRO_BATCH_THRESHOLD:
+        # T-OPT-2.3: Split into 2 parallel micro-batches for faster generation
+        half = num_to_generate // 2
+        rest = num_to_generate - half
+        logger.info(
+            "math_agent_micro_batch_generation",
+            total=num_to_generate,
+            batch_a=half,
+            batch_b=rest,
+        )
+        batch_results = await asyncio.gather(
+            _generate_and_parse(
+                code_exec_llm,
+                half,
+                difficulty_val,
+                topic_str,
+                context,
+                feedback_section,
+                exemplars_section,
+            ),
+            _generate_and_parse(
+                code_exec_llm,
+                rest,
+                difficulty_val,
+                topic_str,
+                context,
+                feedback_section,
+                exemplars_section,
+            ),
+        )
+        all_parsed_items: list[GeneratedContentItem] = []
+        for items in batch_results:
+            all_parsed_items.extend(items)
+    else:
+        all_parsed_items = await _generate_and_parse(
+            code_exec_llm,
+            num_to_generate,
+            difficulty_val,
+            topic_str,
+            context,
+            feedback_section,
+            exemplars_section,
+        )
 
     if not all_parsed_items:
         logger.error("math_agent_structured_output_all_batches_failed")
