@@ -258,21 +258,31 @@ async def _invoke_batch_with_retry(
 
 
 async def _format_quizzes(items: list[dict], llm: BaseChatModel) -> list[QuizQuestion]:
-    """Format content items into typed QuizQuestion models with batch parsing."""
+    """Format content items into typed QuizQuestion models with parallel batch parsing.
+
+    T-OPT-3.4: Batches run concurrently via asyncio.gather (was sequential for-loop).
+    """
     import json
 
     structured_llm = llm.with_structured_output(QuizBatch)
-    all_quiz_outputs: list[tuple[QuizOutput, dict]] = []
+    chain = QUIZ_PROMPT | structured_llm
 
-    # Batch items to avoid structured output returning None
+    # Build batch tasks
+    batches = []
     for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
-        chain = QUIZ_PROMPT | structured_llm
+        batches.append(batch_items)
 
-        parsed = await _invoke_batch_with_retry(
+    # Run all batches in parallel (T-OPT-3.4)
+    async def _parse_batch(batch_items):
+        return batch_items, await _invoke_batch_with_retry(
             chain, batch_items, "formatter_quiz", json
         )
 
+    batch_results = await asyncio.gather(*[_parse_batch(b) for b in batches])
+
+    all_quiz_outputs: list[tuple[QuizOutput, dict]] = []
+    for batch_items, parsed in batch_results:
         for i, q in enumerate(parsed):
             source_item = batch_items[i] if i < len(batch_items) else batch_items[-1]
             all_quiz_outputs.append((q, source_item))
@@ -300,20 +310,29 @@ async def _format_quizzes(items: list[dict], llm: BaseChatModel) -> list[QuizQue
 
 
 async def _format_flashcards(items: list[dict], llm: BaseChatModel) -> list[Flashcard]:
-    """Format content items into typed Flashcard models with batch parsing."""
+    """Format content items into typed Flashcard models with parallel batch parsing.
+
+    T-OPT-3.4: Batches run concurrently via asyncio.gather.
+    """
     import json
 
     structured_llm = llm.with_structured_output(FlashcardBatch)
-    all_fc_outputs: list[tuple[FlashcardOutput, dict]] = []
+    chain = FLASHCARD_PROMPT | structured_llm
 
+    batches = []
     for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
-        chain = FLASHCARD_PROMPT | structured_llm
+        batches.append(batch_items)
 
-        parsed = await _invoke_batch_with_retry(
+    async def _parse_batch(batch_items):
+        return batch_items, await _invoke_batch_with_retry(
             chain, batch_items, "formatter_flashcard", json, result_field="cards"
         )
 
+    batch_results = await asyncio.gather(*[_parse_batch(b) for b in batches])
+
+    all_fc_outputs: list[tuple[FlashcardOutput, dict]] = []
+    for batch_items, parsed in batch_results:
         for i, f in enumerate(parsed):
             source_item = batch_items[i] if i < len(batch_items) else batch_items[-1]
             all_fc_outputs.append((f, source_item))
@@ -336,20 +355,29 @@ async def _format_flashcards(items: list[dict], llm: BaseChatModel) -> list[Flas
 async def _format_fill_blanks(
     items: list[dict], llm: BaseChatModel
 ) -> list[FillBlankQuestion]:
-    """Format content items into typed FillBlankQuestion models with batch parsing."""
+    """Format content items into typed FillBlankQuestion models with parallel batch parsing.
+
+    T-OPT-3.4: Batches run concurrently via asyncio.gather.
+    """
     import json
 
     structured_llm = llm.with_structured_output(FillBlankBatch)
-    all_fb_outputs: list[tuple[FillBlankOutput, dict]] = []
+    chain = FILL_BLANK_PROMPT | structured_llm
 
+    batches = []
     for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
-        chain = FILL_BLANK_PROMPT | structured_llm
+        batches.append(batch_items)
 
-        parsed = await _invoke_batch_with_retry(
+    async def _parse_batch(batch_items):
+        return batch_items, await _invoke_batch_with_retry(
             chain, batch_items, "formatter_fill_blank", json
         )
 
+    batch_results = await asyncio.gather(*[_parse_batch(b) for b in batches])
+
+    all_fb_outputs: list[tuple[FillBlankOutput, dict]] = []
+    for batch_items, parsed in batch_results:
         for i, fb in enumerate(parsed):
             source_item = batch_items[i] if i < len(batch_items) else batch_items[-1]
             all_fb_outputs.append((fb, source_item))

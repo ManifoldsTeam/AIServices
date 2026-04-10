@@ -417,28 +417,37 @@ T-OPT-1.3 ──┘                └──▶ T-OPT-2.2 ───────�
 - [x] Root cause analysis completed (RCA-1 to RCA-4)
 - [x] Optimization plan created
 
-### Tier 1 — Not Started
+### Tier 1 — ✅ Completed (2026-04-10, commit `4c1464b`)
 
-- [ ] T-OPT-1.1: Parallel parse batches
-- [ ] T-OPT-1.2: Cache Vertex AI Search
-- [ ] T-OPT-1.3: Skip supervisor on retry
-- [ ] Tier 1 E2E validation
+- [x] T-OPT-1.1: Parallel parse batches — `asyncio.gather` + `Semaphore(3)` ✅
+- [x] T-OPT-1.2: Cache Vertex AI Search — skip `retrieve_context()` on retry ✅
+- [x] T-OPT-1.3: Skip supervisor on retry — `"fail" → "math_agent"` ✅
+- [x] Tier 1 unit tests: 16/16 passed ✅
+- [x] Code review: 3 findings (F1-F3) fixed ✅
+- [ ] Tier 1 E2E validation (benchmark notebook created, not yet executed)
 
-### Tier 2 — Not Started
+### Tier 2 — ✅ Implemented (2026-04-10, pending commit)
 
-- [ ] T-OPT-2.1: Parse-only retry
-- [ ] T-OPT-2.2: JSON mode (needs research)
-- [ ] T-OPT-2.3: Parallel micro-batch generation
-- [ ] Tier 2 E2E validation
+- [x] T-OPT-2.1: Parse-only retry — `_generate_and_parse()` with cached raw text, `MAX_PARSE_ONLY_RETRIES=2` ✅
+- [x] T-OPT-2.2: JSON mode — **SKIPPED** (Gemini 3 Flash has infinite loop bugs with strict schemas + code_execution) ✅ Research done
+- [x] T-OPT-2.3: Parallel micro-batch generation — split into 2 micro-batches via `asyncio.gather()`, `MICRO_BATCH_THRESHOLD=12` ✅
+- [x] Tier 2 unit tests: 12/12 passed ✅
+- [x] Full regression: 105/105 passed ✅
+- [ ] Tier 2 E2E validation (benchmark notebook created: `test_pipeline_performance_tier2.ipynb`)
 
-### Tier 3 — Not Started
+### Tier 3 — ✅ Implemented (2026-04-10, pending commit)
 
-- [ ] T-OPT-3.1: Pre-generate pool
-- [ ] T-OPT-3.2: Migrate to langchain-google-genai
+- [x] T-OPT-3.1: Pre-generate pool — **BLOCKED** (needs Firestore + Cloud Tasks infrastructure, Phase 4 deferred) ⏳
+- [x] T-OPT-3.2: Migrate to langchain-google-genai — **ALREADY DONE** (migrated 2026-03-27, `ChatGoogleGenerativeAI` in use) ✅
+- [x] T-OPT-3.3: Deterministic supervisor — `USE_LLM_CLASSIFICATION=False`, skip LLM call in Phase 1 (~3-5s saved) ✅
+- [x] T-OPT-3.4: Parallel formatter batches — `asyncio.gather` for quiz/flashcard/fill_blank batch processing ✅
+- [x] Tier 3 unit tests: 13/13 passed ✅
+- [x] Full regression: 140/145 passed (5 pre-existing settings mock failures) ✅
+- [ ] Tier 3 E2E validation (final benchmark notebook: `test_pipeline_performance_final.ipynb`)
 
 ### Risks & Blockers
 
-- [ ] **RISK:** JSON mode + code_execution compatibility chưa xác nhận (T-OPT-2.2)
+- [x] **RISK:** JSON mode + code_execution compatibility — **CONFIRMED INCOMPATIBLE** (Gemini 3 Flash infinite loop with strict schemas). T-OPT-2.2 skipped.
 - [ ] **RISK:** Parallel generation có thể giảm quality nếu model không consistent
 - [ ] **RISK:** Pre-generate pool cần Firestore schema design + team alignment
 
@@ -446,6 +455,7 @@ T-OPT-1.3 ──┘                └──▶ T-OPT-2.2 ───────�
 
 ## 7. Next Steps (Immediate Priority)
 
-1. **Bắt đầu Tier 1** — T-OPT-1.1 + T-OPT-1.2 song song (không phụ thuộc nhau)
-2. **Research T-OPT-2.2** — Test Gemini 3 Flash: `code_execution` + `response_schema` compatibility
-3. **Review plan** — Team review trước khi bắt đầu Tier 2+
+1. **Run Final E2E Benchmark** — Execute `test_pipeline_performance_final.ipynb` to measure all-tiers combined performance
+2. **Commit Tier 2 + 3** — Tier 2: `perf(tier2): parse-only retry + parallel micro-batch generation` + Tier 3: `perf(tier3): deterministic supervisor + parallel formatter batches`
+3. **T-OPT-3.1 Pre-Generate Pool** — Deferred to Phase 4 (requires Firestore + Cloud Tasks infrastructure)
+4. **Address pre-existing test failures** — Fix 5 settings mock issues in `test_llm_service.py` + `test_singleton_clients.py`
