@@ -7,10 +7,14 @@ The Supervisor:
 
 Phase 1: Only routes to Math Agent (handles math/physics/chemistry)
 Phase 2+: Will route to Story Agent, Visual Agent, Structure Agent
+
+T-OPT-3.3: Phase 1 uses deterministic routing (no LLM call) since only
+"math" is supported. When Phase 2+ agents are added, re-enable LLM
+classification by setting USE_LLM_CLASSIFICATION = True.
 """
 
 import structlog
-from langchain_google_vertexai import ChatVertexAI
+from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -20,6 +24,10 @@ from src.services.llm import get_review_llm
 from src.services.rate_limiter import rate_limited_llm_call
 
 logger = structlog.get_logger(__name__)
+
+# T-OPT-3.3: Disable LLM classification in Phase 1 (only "math" supported).
+# Set to True when Phase 2+ agents are added.
+USE_LLM_CLASSIFICATION: bool = False
 
 # Content type classification prompt
 SUPERVISOR_PROMPT = ChatPromptTemplate.from_messages(
@@ -57,13 +65,16 @@ What is the content type?""",
 )
 
 
-def _get_llm() -> ChatVertexAI:
+def _get_llm() -> BaseChatModel:
     """Get Gemini LLM for supervisor classification."""
     return get_review_llm(temperature=0, max_output_tokens=10)
 
 
 async def supervisor_node(state: AgentState) -> dict:
     """Analyze request and classify content type.
+
+    T-OPT-3.3: When USE_LLM_CLASSIFICATION is False (Phase 1), skips the
+    LLM call entirely and defaults to "math" — saves ~3-5s per run.
 
     Reads:
         - state["request"]: GenerationRequest
@@ -74,7 +85,6 @@ async def supervisor_node(state: AgentState) -> dict:
         - state["doc_scope"]: Extracted from request
     """
     request = state["request"]
-    search_context = state.get("search_context", [])
 
     logger.info(
         "supervisor_analyzing",
@@ -83,41 +93,51 @@ async def supervisor_node(state: AgentState) -> dict:
         doc_scope=request.doc_scope.value,
     )
 
-    # Build context preview
-    context_preview = (
-        "\n".join(search_context[:3])[:500] if search_context else "No context yet"
-    )
-
-    # Classify content type
-    llm = _get_llm()
-    chain = SUPERVISOR_PROMPT | llm | StrOutputParser()
-
-    try:
-        content_type = await rate_limited_llm_call(
-            chain.ainvoke(
-                {
-                    "topic": request.topic or "General",
-                    "doc_scope": request.doc_scope.value,
-                    "game_types": ", ".join([gt.value for gt in request.game_types]),
-                    "difficulty": request.difficulty.value,
-                    "language": request.language,
-                    "context_preview": context_preview,
-                }
-            )
+    if not USE_LLM_CLASSIFICATION:
+        # T-OPT-3.3: Deterministic routing — Phase 1 only supports "math"
+        content_type = "math"
+        logger.info(
+            "supervisor_deterministic",
+            content_type=content_type,
+            reason="Phase 1 — USE_LLM_CLASSIFICATION=False",
         )
-        content_type = content_type.strip().lower()
+    else:
+        # Phase 2+: LLM-based classification
+        search_context = state.get("search_context", [])
+        context_preview = (
+            "\n".join(search_context[:3])[:500] if search_context else "No context yet"
+        )
 
-        # Phase 1: Only math is supported, default to math
-        if content_type not in ["math"]:
-            logger.warning(
-                "unsupported_content_type_defaulting_to_math",
-                detected=content_type,
+        llm = _get_llm()
+        chain = SUPERVISOR_PROMPT | llm | StrOutputParser()
+
+        try:
+            content_type = await rate_limited_llm_call(
+                chain.ainvoke(
+                    {
+                        "topic": request.topic or "General",
+                        "doc_scope": request.doc_scope.value,
+                        "game_types": ", ".join(
+                            [gt.value for gt in request.game_types]
+                        ),
+                        "difficulty": request.difficulty.value,
+                        "language": request.language,
+                        "context_preview": context_preview,
+                    }
+                )
             )
-            content_type = "math"
+            content_type = content_type.strip().lower()
 
-    except Exception as e:
-        logger.error("supervisor_classification_failed", error=str(e))
-        content_type = "math"  # Default fallback
+            if content_type not in ["math"]:
+                logger.warning(
+                    "unsupported_content_type_defaulting_to_math",
+                    detected=content_type,
+                )
+                content_type = "math"
+
+        except Exception as e:
+            logger.error("supervisor_classification_failed", error=str(e))
+            content_type = "math"
 
     logger.info("supervisor_classified", content_type=content_type)
 

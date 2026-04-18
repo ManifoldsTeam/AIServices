@@ -36,10 +36,17 @@ from src.config.constants import (
 
 logger = structlog.get_logger(__name__)
 
+# Module-level singleton (lazy init)
+_storage_client: storage.Client | None = None
+
 
 def _get_storage_client() -> storage.Client:
-    """Get GCS client (cached at module level in production)."""
-    return storage.Client(project=get_settings().gcp_project_id)
+    """Get GCS client (singleton, created once per process)."""
+    global _storage_client
+    if _storage_client is None:
+        _storage_client = storage.Client(project=get_settings().gcp_project_id)
+        logger.info("gcs_client_init")
+    return _storage_client
 
 
 def validate_file(filename: str, file_size: int) -> tuple[bool, str]:

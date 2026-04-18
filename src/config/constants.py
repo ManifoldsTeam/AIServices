@@ -45,6 +45,24 @@ FORMATTER_BATCH_SIZE: int = 7
 YIELD_OVERSHOOT_RATIO: float = 1.3
 """Generate 30% more items than requested to buffer against review rejection."""
 
+# ─── Adaptive Overshoot by Difficulty (P2) ───────────────────────────
+OVERSHOOT_BY_DIFFICULTY: dict[str, float] = {
+    "recall": 1.1,
+    "comprehension": 1.2,
+    "application": 1.4,
+    "high_application": 2.5,
+}
+"""Difficulty-specific overshoot ratios. Higher difficulty → more buffer needed."""
+
+# ─── Review Threshold by Difficulty (P3) ─────────────────────────────
+REVIEW_THRESHOLD_BY_DIFFICULTY: dict[str, float] = {
+    "recall": 0.7,
+    "comprehension": 0.7,
+    "application": 0.65,
+    "high_application": 0.5,
+}
+"""Difficulty-aware review score thresholds. Harder levels get lower thresholds."""
+
 # ─── Document Types ──────────────────────────────────────────────────
 DOC_TYPES: set[str] = {"sgk", "sbt", "de-thi", "chuyen-de", "trac-nghiem", "khac"}
 """Valid document types for system-uploaded content."""

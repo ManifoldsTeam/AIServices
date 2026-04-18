@@ -1,9 +1,9 @@
-"""LLM service factory — ChatVertexAI Pro/Flash model providers.
+"""LLM service factory — cached ChatGoogleGenerativeAI providers.
 
 Provides centralized LLM instantiation with:
-1. Config-driven model selection (Pro for generation, Flash for review)
-2. Retry logic + error handling
-3. Token usage tracking via structlog
+1. Config-driven model selection (generation vs review)
+2. Singleton caching — same (temperature, max_tokens) → same instance
+3. Retry logic + error handling via LangChain max_retries
 
 Usage:
     from src.services.llm import get_generation_llm, get_review_llm
@@ -15,8 +15,9 @@ Usage:
     llm = get_review_llm()
 """
 
+from functools import lru_cache
+
 import structlog
-from langchain_google_vertexai import ChatVertexAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.config import get_settings
@@ -33,26 +34,20 @@ from src.config.constants import (
 logger = structlog.get_logger(__name__)
 
 
+@lru_cache(maxsize=8)
 def get_generation_llm(
     temperature: float = GENERATION_TEMPERATURE,
     max_output_tokens: int = GENERATION_MAX_TOKENS,
 ) -> ChatGoogleGenerativeAI:
-    """Get LLM for content generation tasks.
+    """Get (cached) LLM for content generation tasks.
 
-    Uses Gemini model with higher creativity settings for
-    generating varied educational questions and content.
-
-    Args:
-        temperature: Sampling temperature (0.0-1.0). Higher = more creative.
-        max_output_tokens: Maximum tokens in response.
-
-    Returns:
-        Configured ChatGoogleGenerativeAI instance for generation.
+    Instances are cached by (temperature, max_output_tokens).
+    Same parameters → same instance across the entire process.
     """
     settings = get_settings()
     location = settings.generation_model_location or settings.gcp_location
 
-    logger.debug(
+    logger.info(
         "creating_generation_llm",
         model=settings.generation_model,
         temperature=temperature,
@@ -61,7 +56,7 @@ def get_generation_llm(
     )
 
     return ChatGoogleGenerativeAI(
-        model_name=settings.generation_model,
+        model=settings.generation_model,
         project=settings.gcp_project_id,
         location=location,
         temperature=temperature,
@@ -70,26 +65,20 @@ def get_generation_llm(
     )
 
 
+@lru_cache(maxsize=4)
 def get_review_llm(
     temperature: float = REVIEW_TEMPERATURE,
     max_output_tokens: int = REVIEW_MAX_TOKENS,
 ) -> ChatGoogleGenerativeAI:
-    """Get LLM for review/validation tasks.
+    """Get (cached) LLM for review/validation tasks.
 
-    Uses Gemini Flash with low temperature for deterministic,
-    consistent quality reviews.
-
-    Args:
-        temperature: Low temperature for consistent reviews.
-        max_output_tokens: Generally smaller for review outputs.
-
-    Returns:
-        Configured ChatGoogleGenerativeAI instance for review.
+    Instances are cached by (temperature, max_output_tokens).
+    Same parameters → same instance across the entire process.
     """
     settings = get_settings()
     location = settings.review_model_location or settings.gcp_location
 
-    logger.debug(
+    logger.info(
         "creating_review_llm",
         model=settings.review_model,
         temperature=temperature,
@@ -98,7 +87,7 @@ def get_review_llm(
     )
 
     return ChatGoogleGenerativeAI(
-        model_name=settings.review_model,
+        model=settings.review_model,
         project=settings.gcp_project_id,
         location=location,
         temperature=temperature,
@@ -114,16 +103,8 @@ def get_structured_llm(
 ) -> ChatGoogleGenerativeAI:
     """Get LLM with structured output for a given Pydantic schema.
 
-    Wraps `with_structured_output()` for use cases where we need
-    deterministic JSON output matching a schema.
-
-    Args:
-        output_schema: Pydantic BaseModel class for structured output.
-        temperature: Lower temperature for more deterministic output.
-        max_output_tokens: Max tokens for the response.
-
-    Returns:
-        ChatGoogleGenerativeAI with structured output support.
+    Note: `.with_structured_output()` returns a new runnable each time,
+    but the underlying LLM instance is cached via get_generation_llm().
     """
     llm = get_generation_llm(
         temperature=temperature,

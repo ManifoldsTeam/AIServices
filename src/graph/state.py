@@ -25,7 +25,7 @@ class AgentState(TypedDict, total=False):
         reviewed_items: Items that passed quality review
         rejected_items: Items that failed review (accumulated via add operator)
 
-        iteration_count: Current feedback loop iteration (max 3)
+        iteration_count: Current feedback loop iteration (max 5)
 
         final_output: Final GameContentResponse after formatting
         errors: Error messages accumulated during processing
@@ -56,4 +56,4 @@ class AgentState(TypedDict, total=False):
 
 
 # Constants
-MAX_REVIEW_ITERATIONS = 3
+MAX_REVIEW_ITERATIONS = 5

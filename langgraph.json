@@ -1,0 +1,9 @@
+{
+    "dependencies": [
+        "."
+    ],
+    "graphs": {
+        "content_generation": "./src/graph/builder.py:compile_graph"
+    },
+    "env": ".env"
+}

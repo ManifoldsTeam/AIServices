@@ -20,14 +20,21 @@ from src.config import get_settings
 
 logger = structlog.get_logger(__name__)
 
+# Module-level singleton (lazy init)
+_client: firestore.AsyncClient | None = None
+
 
 def _get_client() -> firestore.AsyncClient:
-    """Get Firestore async client."""
-    settings = get_settings()
-    return firestore.AsyncClient(
-        project=settings.gcp_project_id,
-        database=settings.firestore_database,
-    )
+    """Get Firestore async client (singleton, created once per process)."""
+    global _client
+    if _client is None:
+        settings = get_settings()
+        _client = firestore.AsyncClient(
+            project=settings.gcp_project_id,
+            database=settings.firestore_database,
+        )
+        logger.info("firestore_client_init", database=settings.firestore_database)
+    return _client
 
 
 # ─── Generation Jobs ────────────────────────────────────────────

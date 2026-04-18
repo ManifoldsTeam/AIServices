@@ -185,8 +185,8 @@ local_async_mode: bool = False
 
 - `VertexAISearchRetriever._serving_config` phải override với engine-level path (datastore-level không hoạt động)
 - Enterprise tier bắt buộc cho extractive answers
-- `gemini-3.1-flash-lite-preview` chỉ available ở region `global` (review model)
-- Generation model dùng `asia-southeast1`
+- `gemini-3-flash-preview` CHỈ available ở `global` endpoint (KHÔNG có ở `asia-southeast1`)
+- Cả generation và review model đều dùng `global` endpoint (xem session 2026-03-29)
 
 ### Môi trường
 
@@ -198,9 +198,9 @@ local_async_mode: bool = False
 
 ## Notebook Sessions đã verify
 
-| Notebook                                    | Cells | Kết quả       | Ngày       |
-| ------------------------------------------- | ----- | ------------- | ---------- |
-| `test_vertex_search.ipynb`                  | 10/10 | PASS          | 2026-03-09 |
-| `test_services.ipynb`                       | 11/11 | PASS          | 2026-03-09 |
-| `test_week2_local_session_2026_03_11.ipynb` | 5/5   | PASS          | 2026-03-11 |
-| `test_graph_pipeline.ipynb`                 | 0/14  | **CHƯA CHẠY** | —          |
+| Notebook                                    | Cells | Kết quả | Ngày       |
+| ------------------------------------------- | ----- | ------- | ---------- |
+| `test_vertex_search.ipynb`                  | 10/10 | PASS    | 2026-03-09 |
+| `test_services.ipynb`                       | 11/11 | PASS    | 2026-03-09 |
+| `test_week2_local_session_2026_03_11.ipynb` | 5/5   | PASS    | 2026-03-11 |
+| `test_graph_pipeline.ipynb`                 | 39/39 | PASS    | 2026-03-29 |

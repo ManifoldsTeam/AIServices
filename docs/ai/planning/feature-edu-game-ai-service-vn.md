@@ -48,12 +48,13 @@ description: Phân rã nhiệm vụ, timeline và các mốc quan trọng
 
 **Những deliverables chính là gì?**
 
-| Mốc    | Tên                          | Tiêu chí Hoàn thành                                                            | Ngày Mục tiêu                                       |
-| ------ | ---------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------- |
-| **M1** | Nền tảng Sẵn sàng            | LangGraph pipeline chạy local, Vertex AI Search hoạt động với fixtures         | Cuối Tuần 1                                         |
-| **M2** | Async + Multi-tenant Phase 1 | POST /generate → async → poll works, doc_scope filtering đúng, user-first      | Giữa Tuần 2                                         |
-| **M3** | API Sẵn sàng Tích hợp        | Tất cả endpoints hoạt động, Admin API done, schema finalized với Game Client   | Cuối Tuần 2                                         |
-| **M4** | Production Ready             | Cloud Run deploy, Cloud Run IAM verified, 98% accuracy, latency <60s, E2E pass | ⏸️ **DEFERRED** — Sau khi hoàn thành tất cả Pillars |
+| Mốc      | Tên                                  | Tiêu chí Hoàn thành                                                                  | Ngày Mục tiêu                                       |
+| -------- | ------------------------------------ | ------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| **M1**   | Nền tảng Sẵn sàng                    | LangGraph pipeline chạy local, Vertex AI Search hoạt động với fixtures               | Cuối Tuần 1                                         |
+| **M2**   | Async + Multi-tenant Phase 1         | POST /generate → async → poll works, doc_scope filtering đúng, user-first            | Giữa Tuần 2                                         |
+| **M3**   | API Sẵn sàng Tích hợp                | Tất cả endpoints hoạt động, Admin API done, schema finalized với Game Client         | Cuối Tuần 2                                         |
+| **M3.5** | Pipeline 100% Delivery + Performance | 100% delivery all 4 levels ✅ (2026-04-09). Performance optimization: high_app ≤400s | [Plan](pipeline-performance-optimization-plan.md)   |
+| **M4**   | Production Ready                     | Cloud Run deploy, Cloud Run IAM verified, 98% accuracy, latency <60s, E2E pass       | ⏸️ **DEFERRED** — Sau khi hoàn thành tất cả Pillars |
 
 ---
 

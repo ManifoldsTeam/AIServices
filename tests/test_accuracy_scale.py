@@ -37,7 +37,7 @@ from src.api.schemas import (
 from src.graph.builder import get_graph_app
 
 
-def make_request(topic, num_questions=10, game_types=None, difficulty="medium"):
+def make_request(topic, num_questions=10, game_types=None, difficulty="comprehension"):
     gts = [GameType(g) for g in (game_types or ["quiz"])]
     return GenerationRequest(
         user_id="accuracy_test",

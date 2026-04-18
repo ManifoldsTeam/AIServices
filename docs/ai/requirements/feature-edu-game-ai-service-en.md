@@ -65,7 +65,7 @@ Team **has no existing infrastructure** → needs 100% Managed Services:
 4. **LangGraph as the sole core orchestration** for all business logic. Extending business logic = adding nodes/edges to graph.
 5. **Vertex AI Search replaces RAG pipeline** — upload docs → Data Store auto-indexes → query via `VertexAISearchRetriever`. Zero custom indexing code.
 6. **Support 3 input formats:** PDF, DOCX, PPTX.
-7. **Feedback loop in LangGraph:** Supervisor → Agent → Reviewer → reject → retry (max 3 times).
+7. **Feedback loop in LangGraph:** Supervisor → Agent → Reviewer → reject → retry (max 5 times).
 
 ### Secondary Goals
 
@@ -180,7 +180,7 @@ Flow C — Generate game content:
     - doc_scope="system": filter user_id="**system**" only
     - doc_scope="all": query both → user-first re-ranking
       c. Reviewer (Gemini Flash): checks quality, grounding
-      d. Fail → feedback loop to Supervisor (max 3 times)
+      d. Fail → feedback loop to Supervisor (max 5 times)
       e. Formatter: receives content items + game_types[]
       → transforms according to game template
       → outputs Pydantic-compliant JSON
@@ -218,7 +218,7 @@ All game types are based on **educational content items** at the base layer:
 - System docs empty + doc_scope="system" → 400 "No system documents available"
 - System docs empty + doc_scope="all" + user has docs → still succeeds (uses user docs)
 - PPTX with only images, little text → warning "Insufficient text content"
-- Code Execution timeout → retry with simplified prompt, max 3 times
+- Code Execution timeout → retry with simplified prompt, max 5 times
 - Duplicate questions → dedup check in Formatter
 
 ## Success Criteria
@@ -248,10 +248,14 @@ All game types are based on **educational content items** at the base layer:
 
 ### Performance
 
-- [ ] < 60s for 10 questions, < 5 minutes for 50 questions
+- [ ] < 120s for 10 questions (recall/comprehension single iteration)
+- [ ] < 600s for 10 questions (application/high_application with feedback loop)
+- [ ] < 10 minutes for 50 questions
 - [ ] ≥ 10 concurrent requests on Cloud Run
 - [ ] Vertex AI Search query < 2s
 - [ ] Document indexing < 15 minutes for 50MB file
+
+> **Updated 2026-03-31:** Latency targets revised — 100% delivery requires feedback loops for harder difficulties.
 
 ### Cost
 

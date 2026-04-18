@@ -1,98 +1,51 @@
 # Project Timeline
 
-> Nhật ký phát triển theo thời gian — mỗi entry ghi lại **vấn đề, nguyên nhân, hành động, và kết quả**.  
-> Agent PHẢI tự động thêm entry mới sau mỗi lần triển khai thay đổi đáng kể.
+> Nhật ký phát triển — bản **tóm tắt ngắn gọn**. Chi tiết từng ngày xem trong [`docs/timeline/`](../../docs/timeline/).  
+> Agent PHẢI: (1) thêm dòng tóm tắt ở đây, (2) thêm/cập nhật file chi tiết `docs/timeline/DD-MM-YYYY.md`.
 
 ---
 
 ## Format
 
-```
-### YYYY-MM-DD — [Tiêu đề ngắn gọn]
+**File này (summary):**
 
-**Vấn đề:** Mô tả bug/yêu cầu gốc
-**Nguyên nhân:** Phân tích root cause
-**Hành động:** Các bước xử lý chính
-**Kết quả:** Trạng thái sau khi xử lý
-
-**References:**
-- [file-path](file-path) — mô tả thay đổi
 ```
+| Ngày | Giờ | Tiêu đề | Kết quả | Chi tiết |
+```
+
+**File chi tiết** (`docs/timeline/DD-MM-YYYY.md`):
+
+```
+### HH:MM — [Tiêu đề ngắn gọn]
+
+**Vấn đề:** ...
+**Nguyên nhân:** ...
+**Hành động:** ...
+**Kết quả:** ...
+**References:** ...
+```
+
+> Mỗi file daily chỉ cần **giờ** (HH:MM) vì ngày đã nằm trong tên file.
 
 ---
 
-## Entries
+## Summary
 
-### 2026-03-26 — Refactor bucket structure & bổ sung 798 PDFs (SGK + SBT)
-
-**Vấn đề:** Pipeline sinh đề thi fail hàng loạt do timeout. Agent trong graph phải tự sinh câu hỏi dạng vận dụng trở lên vì thiếu dữ liệu bài tập (SBT) trong bucket — chỉ có 226 file SGK cũ với path structure không nhất quán (`system/sgk/lop-10/...` vs code dùng `system/{date}/{session_id}/...`).
-
-**Nguyên nhân:**
-
-1. Bucket chỉ chứa SGK (~226 file), không có SBT/bài tập → LLM phải tự generate toàn bộ câu hỏi vận dụng → vượt timeout
-2. Path structure giữa code (`document_store.py`) và notebook (`manage_bucket_data.ipynb`) xung đột → khó quản lý batch upload vs API upload
-3. Metadata thiếu trường `doc_type` để phân biệt SGK/SBT
-
-**Hành động:**
-
-1. Download 556 file SBT mới từ loigiaihay.com (tổng cộng 798 PDF: 226 SGK + 556 SBT + 16 khác)
-2. Thống nhất path structure: `system/{grade}/{doc_type}/{subject}/{filename}` (Decision D1=Option A)
-3. Refactor `document_store.py`: cập nhật `build_gcs_path()` và `upload_document()` hỗ trợ `grade`, `doc_type`, `subject`
-4. Thêm `DOC_TYPES` vào `constants.py`
-5. Metadata GCS: thêm trường `doc_type` (Decision D2=Yes)
-6. Giữ nguyên admin API — không thêm `doc_type` param (Decision D3=No), sử dụng date-based fallback
-7. Xóa 226 file cũ → upload 798 file mới → trigger Vertex AI Search FULL re-import
-8. Rewrite notebook loại bỏ toàn bộ hardcoded vars, dùng `get_settings()`
-
-**Kết quả:**
-
-- ✅ 798 PDFs uploaded thành công (795 qua Python + 3 file lớn retry qua gsutil)
-- ✅ Vertex AI Search FULL import triggered (operation `import-documents-11607082215680860780`)
-- ✅ Metadata đầy đủ: `user_id`, `scope`, `grade`, `subject`, `doc_type`
-- ✅ Breakdown: lop-10/sbt: 326, lop-10/sgk: 48, lop-11/sbt: 165, lop-11/sgk: 73, lop-12/sbt: 124, lop-12/sgk: 62
-- ⏳ Cần verify Vertex AI Search indexing hoàn tất
-
-**Lỗi gặp phải trong quá trình triển khai:**
-
-- 403 Forbidden khi truy cập GCS — do `gcloud config project` trỏ nhầm sang `bid-information-484813`. Fix: `gcloud config set project green-mercury-485016-n1` + `gcloud auth application-default set-quota-project`
-- 3 file >35MB timeout (120s) khi upload qua Python ThreadPoolExecutor — retry thành công qua `gsutil cp`
-
-**References:**
-
-- [src/services/document_store.py](src/services/document_store.py) — refactor `build_gcs_path()`, `upload_document()`, thêm `doc_type` metadata
-- [src/config/constants.py](src/config/constants.py) — thêm `DOC_TYPES` set
-- [notebooks/exploration/manage_bucket_data.ipynb](notebooks/exploration/manage_bucket_data.ipynb) — rewrite 8 cells, xóa hardcoded vars
-- [notebooks/exploration/download_sbt_pdfs.ipynb](notebooks/exploration/download_sbt_pdfs.ipynb) — notebook tải SBT từ loigiaihay.com
-- [notebooks/tests/test_week2_local_session_2026_03_11.ipynb](notebooks/tests/test_week2_local_session_2026_03_11.ipynb) — fix hardcoded bucket name trong mock
-- [docs/ai/planning/refactor-bucket-structure-plan.md](docs/ai/planning/refactor-bucket-structure-plan.md) — plan chi tiết 3 decisions + scope of impact
-
----
-
-### 2026-03-26 — P1: Client-Side Rate Limiting cho LLM Calls
-
-**Vấn đề:** Test `large_30q` chỉ đạt 64.1% pass rate do lỗi 429 (rate limit exceeded). Không có cơ chế kiểm soát tốc độ gọi LLM phía client — batch parsing song song phát ra 4+ lệnh gọi đồng thời vượt quota 60 RPM.
-
-**Nguyên nhân:** Tất cả 8 điểm gọi LLM (`.ainvoke()`) trong pipeline đều gọi trực tiếp Vertex AI API mà không có rate limiting hay concurrency cap.
-
-**Hành động:**
-
-1. Tạo `src/services/rate_limiter.py` — `AsyncTokenBucket` (token bucket async-safe), `CircuitBreaker` (trip sau 5 lỗi 429 liên tiếp, cooldown 60s), `rate_limited_llm_call()` wrapper
-2. Thêm config `llm_rate_limit_rpm` (default 60) và `llm_max_concurrent` (default 10) vào `Settings`
-3. Wrap `rate_limited_llm_call()` vào 8 điểm gọi LLM: `formatter.py` ×3, `math_agent.py` ×3, `supervisor.py` ×1, `reviewer.py` ×1
-4. Lazy initialization singletons — đọc config từ `get_settings()` khi gọi lần đầu
-
-**Kết quả:**
-
-- ✅ Module rate_limiter.py tạo thành công, import OK
-- ✅ 8/8 call sites wrapped với rate_limited_llm_call()
-- ✅ Config env-configurable qua `LLM_RATE_LIMIT_RPM` và `LLM_MAX_CONCURRENT`
-- ⏳ Cần test với `large_30q` để xác nhận lỗi 429 biến mất
-
-**References:**
-
-- [src/services/rate_limiter.py](src/services/rate_limiter.py) — module mới: AsyncTokenBucket, CircuitBreaker, rate_limited_llm_call()
-- [src/config/settings.py](src/config/settings.py) — thêm `llm_rate_limit_rpm`, `llm_max_concurrent`
-- [src/graph/nodes/formatter.py](src/graph/nodes/formatter.py) — wrap 3 chain.ainvoke() calls
-- [src/graph/nodes/math_agent.py](src/graph/nodes/math_agent.py) — wrap 3 ainvoke() calls (code_exec, parse batch, parse single)
-- [src/graph/nodes/supervisor.py](src/graph/nodes/supervisor.py) — wrap chain.ainvoke()
-- [src/graph/nodes/reviewer.py](src/graph/nodes/reviewer.py) — wrap chain.ainvoke()
+| Ngày       | Giờ   | Tiêu đề                                       | Kết quả                                                                                                                | Chi tiết                                      |
+| ---------- | ----- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| 2026-03-26 | 14:00 | Refactor bucket + 798 PDFs                    | ✅ 798 PDFs uploaded, Vertex import triggered                                                                          | [chi tiết](../../docs/timeline/26-03-2026.md) |
+| 2026-03-26 | 18:00 | Client-Side Rate Limiting                     | ✅ 8/8 call sites wrapped, rate_limiter.py created                                                                     | [chi tiết](../../docs/timeline/26-03-2026.md) |
+| 2026-03-27 | 10:00 | Singleton/Cache + ChatVertexAI Migration      | ✅ 7/7 singleton checks passed, zero ChatVertexAI                                                                      | [chi tiết](../../docs/timeline/27-03-2026.md) |
+| 2026-03-27 | 14:30 | Fix notebook async execution                  | ✅ asyncio.run → await, patch target fixed                                                                             | [chi tiết](../../docs/timeline/27-03-2026.md) |
+| 2026-03-27 | 19:22 | Verify Vertex indexing + re-benchmark         | ✅ 798/798 indexed, 84.6% pass rate (13 tests)                                                                         | [chi tiết](../../docs/timeline/27-03-2026.md) |
+| 2026-03-27 | 19:44 | Refactor timeline + pass rate analysis        | ✅ Timeline → summary+daily, 5 root causes identified                                                                  | [chi tiết](../../docs/timeline/27-03-2026.md) |
+| 2026-03-29 | 09:30 | Implement P0–P4 pipeline fixes                | ✅ 5 root causes fixed, 31 unit tests pass                                                                             | [chi tiết](../../docs/timeline/29-03-2026.md) |
+| 2026-03-29 | 12:20 | Tối ưu high_application + auto suspicious RCA | ✅ Thêm exemplar theo domain, lọc feedback theo difficulty, rerun high_application đạt 10.0%                           | [chi tiết](../../docs/timeline/29-03-2026.md) |
+| 2026-03-29 | 20:49 | Pipeline 100% delivery — 5 fixes              | ✅ ALL 4 difficulty levels 100% delivery (recall/comprehension/application/high_application)                           | [chi tiết](../../docs/timeline/29-03-2026.md) |
+| 2026-04-09 | 10:00 | E2E Final Verification — 100% Delivery        | ✅ 40/40 items, 115/115 tests, total 2079s (recall 125s, comprehension 123s, application 540s, high_application 1291s) | [chi tiết](../../docs/timeline/09-04-2026.md) |
+| 2026-04-09 | 11:00 | Performance Optimization Plan                 | 📋 Plan created: 3 tiers, 8 tasks, target high_application ≤400s                                                       | [chi tiết](../../docs/timeline/09-04-2026.md) |
+| 2026-04-09 | 13:15 | Tier 1 Performance Optimizations              | ✅ 3 optimizations implemented (parallel parse, cache search, skip supervisor), 82/82 tests pass                       | [chi tiết](../../docs/timeline/09-04-2026.md) |
+| 2026-04-09 | 14:30 | Tier 1 Code Review + Commit                   | ✅ 3 findings fixed (F1-F3), 93/93 tests pass, committed as `4c1464b`                                                  | [chi tiết](../../docs/timeline/09-04-2026.md) |
+| 2026-04-09 | 15:38 | Tier 2 Performance Optimizations              | ✅ T-OPT-2.1 parse-only retry + T-OPT-2.3 parallel micro-batch, T-OPT-2.2 skipped (research), 105/105 tests pass       | [chi tiết](../../docs/timeline/09-04-2026.md) |
+| 2026-04-10 | 16:00 | Tier 3 Performance Optimizations              | ✅ T-OPT-3.3 deterministic supervisor + T-OPT-3.4 parallel formatter batches, 13/13 tests, 140/145 regression          | [chi tiết](../../docs/timeline/10-04-2026.md) |
+| 2026-04-10 | 17:00 | Final Benchmark Notebook Created              | ✅ Comprehensive notebook for all 3 tiers, SDK verification, 4-level E2E benchmark vs 2078.5s baseline                 | [chi tiết](../../docs/timeline/10-04-2026.md) |

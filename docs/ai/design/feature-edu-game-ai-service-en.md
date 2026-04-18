@@ -585,10 +585,14 @@ src/
 
 ### Performance
 
-- 10 questions < 60s, 50 questions < 5 minutes
+- 10 questions (recall/comprehension): < 120s single iteration
+- 10 questions (application/high_application): < 600s with feedback loop (up to 5 iterations)
+- 50 questions: < 10 minutes
 - Concurrent: ≥ 10 requests (Cloud Run auto-scale)
 - Vertex AI Search query: < 2s
 - Document indexing: < 15 minutes for 50MB file
+
+> **Updated 2026-03-31:** Performance targets revised after 100% delivery validation. Higher difficulties require feedback loops, trading latency for guaranteed delivery.
 
 ### Scalability
 
@@ -613,7 +617,7 @@ src/
 
 - LangGraph checkpoint: resume from last node on crash
 - Retry logic: exponential backoff for Gemini/AI Search API calls
-- Max 3 feedback loop iterations (prevent infinite loop)
+- Max 5 feedback loop iterations (prevent infinite loop; increased from 3 to guarantee 100% delivery for hard difficulties)
 - Cloud Run SLA: 99.95%
 
 ### Observability

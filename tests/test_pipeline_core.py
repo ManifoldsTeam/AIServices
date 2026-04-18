@@ -49,7 +49,7 @@ def make_request(
     topic: str,
     num_questions: int = 10,
     game_types: list[str] | None = None,
-    difficulty: str = "medium",
+    difficulty: str = "comprehension",
     doc_scope: str = "system",
 ) -> GenerationRequest:
     gts = [GameType(g) for g in (game_types or ["quiz"])]
@@ -236,13 +236,15 @@ async def test_broad_topic():
 
 
 async def test_difficulty_levels():
-    """Test easy / medium / hard for a Chemistry topic."""
+    """Test recall / comprehension / application / high_application for a Chemistry topic."""
     print("\n" + "=" * 60)
-    print("TEST 5: Difficulty Levels — easy / medium / hard")
+    print(
+        "TEST 5: Difficulty Levels — recall / comprehension / application / high_application"
+    )
     print("=" * 60)
 
     topic = "Phản ứng oxi hóa khử"
-    for diff in ["easy", "medium", "hard"]:
+    for diff in ["recall", "comprehension", "application", "high_application"]:
         print(f"\n  --- {diff} ---")
         req = make_request(
             topic, num_questions=10, difficulty=diff, game_types=["quiz"]

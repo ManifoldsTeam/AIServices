@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 
 import structlog
-from langchain_google_vertexai import ChatVertexAI
+from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,11 @@ from src.config.constants import (
     STRUCTURED_MAX_TOKENS,
     STRUCTURED_TEMPERATURE,
 )
+from src.services.llm import get_generation_llm
 from src.services.rate_limiter import rate_limited_llm_call
+
+# Retry config for structured output batch parsing
+_FORMAT_MAX_RETRIES = 2
 
 from src.graph.state import AgentState
 from src.api.schemas import (
@@ -167,59 +171,121 @@ All content in Vietnamese.""",
 )
 
 
-def _get_llm() -> ChatVertexAI:
-    """Get Gemini Flash LLM for formatting."""
-    settings = get_settings()
-    return ChatVertexAI(
-        model_name=settings.generation_model,
-        project=settings.gcp_project_id,
-        location=settings.generation_model_location or settings.gcp_location,
+def _get_llm() -> BaseChatModel:
+    """Get cached generation LLM for formatting (structured output)."""
+    return get_generation_llm(
         temperature=STRUCTURED_TEMPERATURE,
         max_output_tokens=STRUCTURED_MAX_TOKENS,
     )
 
 
-async def _format_quizzes(items: list[dict], llm: ChatVertexAI) -> list[QuizQuestion]:
-    """Format content items into typed QuizQuestion models with batch parsing."""
+async def _invoke_batch_with_retry(
+    chain,
+    batch_items: list[dict],
+    label: str,
+    json_mod,
+    result_field: str = "questions",
+) -> list:
+    """Invoke structured output chain with retry + per-item fallback.
+
+    Args:
+        chain: LCEL chain (prompt | structured_llm)
+        batch_items: Items to format in this batch
+        label: Log prefix (e.g. "formatter_quiz")
+        json_mod: The json module (passed to avoid re-import)
+        result_field: Attribute name on the batch result ("questions", "cards")
+
+    Returns:
+        List of parsed output objects (may be shorter than batch_items on partial failure)
+    """
+    invoke_args = {
+        "num_items": len(batch_items),
+        "items_json": json_mod.dumps(batch_items, ensure_ascii=False, indent=2),
+    }
+
+    # --- Attempt full batch with retries ---
+    for attempt in range(1, _FORMAT_MAX_RETRIES + 1):
+        try:
+            result = await rate_limited_llm_call(chain.ainvoke(invoke_args))
+            items_out = getattr(result, result_field, None) if result else None
+            if items_out is not None:
+                if len(items_out) != len(batch_items):
+                    logger.warning(
+                        f"{label}_count_mismatch",
+                        expected=len(batch_items),
+                        got=len(items_out),
+                        attempt=attempt,
+                    )
+                logger.info(
+                    f"{label}_batch_parsed",
+                    items=len(items_out),
+                    attempt=attempt,
+                )
+                return items_out
+        except Exception as exc:
+            logger.warning(
+                f"{label}_batch_error",
+                attempt=attempt,
+                error=str(exc)[:200],
+            )
+
+    # --- Fallback: format items one-by-one ---
+    logger.warning(
+        f"{label}_batch_failed_falling_back",
+        batch_size=len(batch_items),
+    )
+    results = []
+    for idx, single_item in enumerate(batch_items):
+        single_args = {
+            "num_items": 1,
+            "items_json": json_mod.dumps([single_item], ensure_ascii=False, indent=2),
+        }
+        try:
+            result = await rate_limited_llm_call(chain.ainvoke(single_args))
+            items_out = getattr(result, result_field, None) if result else None
+            if items_out:
+                results.extend(items_out)
+                logger.debug(f"{label}_single_ok", idx=idx)
+            else:
+                logger.warning(f"{label}_single_empty", idx=idx)
+        except Exception as exc:
+            logger.warning(
+                f"{label}_single_failed",
+                idx=idx,
+                error=str(exc)[:200],
+            )
+    return results
+
+
+async def _format_quizzes(items: list[dict], llm: BaseChatModel) -> list[QuizQuestion]:
+    """Format content items into typed QuizQuestion models with parallel batch parsing.
+
+    T-OPT-3.4: Batches run concurrently via asyncio.gather (was sequential for-loop).
+    """
     import json
 
     structured_llm = llm.with_structured_output(QuizBatch)
-    all_quiz_outputs: list[tuple[QuizOutput, dict]] = []
+    chain = QUIZ_PROMPT | structured_llm
 
-    # Batch items to avoid structured output returning None
+    # Build batch tasks
+    batches = []
     for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
-        chain = QUIZ_PROMPT | structured_llm
+        batches.append(batch_items)
 
-        result: QuizBatch | None = await rate_limited_llm_call(
-            chain.ainvoke(
-                {
-                    "num_items": len(batch_items),
-                    "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
-                }
-            )
+    # Run all batches in parallel (T-OPT-3.4)
+    async def _parse_batch(batch_items):
+        return batch_items, await _invoke_batch_with_retry(
+            chain, batch_items, "formatter_quiz", json
         )
 
-        if result is not None and isinstance(result, QuizBatch):
-            if len(result.questions) != len(batch_items):
-                logger.warning(
-                    "formatter_quiz_count_mismatch",
-                    expected=len(batch_items),
-                    got=len(result.questions),
-                    batch_start=batch_start,
-                )
-            for i, q in enumerate(result.questions):
-                source_item = (
-                    batch_items[i] if i < len(batch_items) else batch_items[-1]
-                )
-                all_quiz_outputs.append((q, source_item))
-            logger.info(
-                "formatter_quiz_batch_parsed",
-                batch_start=batch_start,
-                items=len(result.questions),
-            )
-        else:
-            logger.warning("formatter_quiz_batch_failed", batch_start=batch_start)
+    batch_results = await asyncio.gather(*[_parse_batch(b) for b in batches])
+
+    all_quiz_outputs: list[tuple[QuizOutput, dict]] = []
+    for batch_items, parsed in batch_results:
+        for i, q in enumerate(parsed):
+            source_item = batch_items[i] if i < len(batch_items) else batch_items[-1]
+            all_quiz_outputs.append((q, source_item))
 
     quizzes: list[QuizQuestion] = []
     for q, item in all_quiz_outputs:
@@ -243,46 +309,33 @@ async def _format_quizzes(items: list[dict], llm: ChatVertexAI) -> list[QuizQues
     return quizzes
 
 
-async def _format_flashcards(items: list[dict], llm: ChatVertexAI) -> list[Flashcard]:
-    """Format content items into typed Flashcard models with batch parsing."""
+async def _format_flashcards(items: list[dict], llm: BaseChatModel) -> list[Flashcard]:
+    """Format content items into typed Flashcard models with parallel batch parsing.
+
+    T-OPT-3.4: Batches run concurrently via asyncio.gather.
+    """
     import json
 
     structured_llm = llm.with_structured_output(FlashcardBatch)
-    all_fc_outputs: list[tuple[FlashcardOutput, dict]] = []
+    chain = FLASHCARD_PROMPT | structured_llm
 
+    batches = []
     for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
-        chain = FLASHCARD_PROMPT | structured_llm
+        batches.append(batch_items)
 
-        result: FlashcardBatch | None = await rate_limited_llm_call(
-            chain.ainvoke(
-                {
-                    "num_items": len(batch_items),
-                    "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
-                }
-            )
+    async def _parse_batch(batch_items):
+        return batch_items, await _invoke_batch_with_retry(
+            chain, batch_items, "formatter_flashcard", json, result_field="cards"
         )
 
-        if result is not None and isinstance(result, FlashcardBatch):
-            if len(result.cards) != len(batch_items):
-                logger.warning(
-                    "formatter_flashcard_count_mismatch",
-                    expected=len(batch_items),
-                    got=len(result.cards),
-                    batch_start=batch_start,
-                )
-            for i, f in enumerate(result.cards):
-                source_item = (
-                    batch_items[i] if i < len(batch_items) else batch_items[-1]
-                )
-                all_fc_outputs.append((f, source_item))
-            logger.info(
-                "formatter_flashcard_batch_parsed",
-                batch_start=batch_start,
-                items=len(result.cards),
-            )
-        else:
-            logger.warning("formatter_flashcard_batch_failed", batch_start=batch_start)
+    batch_results = await asyncio.gather(*[_parse_batch(b) for b in batches])
+
+    all_fc_outputs: list[tuple[FlashcardOutput, dict]] = []
+    for batch_items, parsed in batch_results:
+        for i, f in enumerate(parsed):
+            source_item = batch_items[i] if i < len(batch_items) else batch_items[-1]
+            all_fc_outputs.append((f, source_item))
 
     flashcards: list[Flashcard] = []
     for f, item in all_fc_outputs:
@@ -300,47 +353,34 @@ async def _format_flashcards(items: list[dict], llm: ChatVertexAI) -> list[Flash
 
 
 async def _format_fill_blanks(
-    items: list[dict], llm: ChatVertexAI
+    items: list[dict], llm: BaseChatModel
 ) -> list[FillBlankQuestion]:
-    """Format content items into typed FillBlankQuestion models with batch parsing."""
+    """Format content items into typed FillBlankQuestion models with parallel batch parsing.
+
+    T-OPT-3.4: Batches run concurrently via asyncio.gather.
+    """
     import json
 
     structured_llm = llm.with_structured_output(FillBlankBatch)
-    all_fb_outputs: list[tuple[FillBlankOutput, dict]] = []
+    chain = FILL_BLANK_PROMPT | structured_llm
 
+    batches = []
     for batch_start in range(0, len(items), FORMATTER_BATCH_SIZE):
         batch_items = items[batch_start : batch_start + FORMATTER_BATCH_SIZE]
-        chain = FILL_BLANK_PROMPT | structured_llm
+        batches.append(batch_items)
 
-        result: FillBlankBatch | None = await rate_limited_llm_call(
-            chain.ainvoke(
-                {
-                    "num_items": len(batch_items),
-                    "items_json": json.dumps(batch_items, ensure_ascii=False, indent=2),
-                }
-            )
+    async def _parse_batch(batch_items):
+        return batch_items, await _invoke_batch_with_retry(
+            chain, batch_items, "formatter_fill_blank", json
         )
 
-        if result is not None and isinstance(result, FillBlankBatch):
-            if len(result.questions) != len(batch_items):
-                logger.warning(
-                    "formatter_fill_blank_count_mismatch",
-                    expected=len(batch_items),
-                    got=len(result.questions),
-                    batch_start=batch_start,
-                )
-            for i, fb in enumerate(result.questions):
-                source_item = (
-                    batch_items[i] if i < len(batch_items) else batch_items[-1]
-                )
-                all_fb_outputs.append((fb, source_item))
-            logger.info(
-                "formatter_fill_blank_batch_parsed",
-                batch_start=batch_start,
-                items=len(result.questions),
-            )
-        else:
-            logger.warning("formatter_fill_blank_batch_failed", batch_start=batch_start)
+    batch_results = await asyncio.gather(*[_parse_batch(b) for b in batches])
+
+    all_fb_outputs: list[tuple[FillBlankOutput, dict]] = []
+    for batch_items, parsed in batch_results:
+        for i, fb in enumerate(parsed):
+            source_item = batch_items[i] if i < len(batch_items) else batch_items[-1]
+            all_fb_outputs.append((fb, source_item))
 
     fill_blanks: list[FillBlankQuestion] = []
     for fb, item in all_fb_outputs:
