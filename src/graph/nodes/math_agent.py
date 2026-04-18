@@ -58,9 +58,11 @@ MAX_PARSE_ONLY_RETRIES: int = 2
 """Times to retry parsing the same raw text before re-generating (T-OPT-2.1).
 Saves 30-60s of code execution per retry when only parsing fails."""
 
-MICRO_BATCH_THRESHOLD: int = 12
+MICRO_BATCH_THRESHOLD: int = 20
 """Split generation into 2 parallel micro-batches when num_to_generate exceeds this (T-OPT-2.3).
-Each micro-batch runs generate+parse independently, then results are merged."""
+Each micro-batch runs generate+parse independently, then results are merged.
+Set to 20 to avoid splitting easy difficulties (recall/comprehension generate ~13 items).
+Splitting small batches into 6+7 causes duplicate questions → reviewer rejects → extra iterations."""
 
 
 class GeneratedContentItem(BaseModel):

@@ -105,9 +105,7 @@ async def supervisor_node(state: AgentState) -> dict:
         # Phase 2+: LLM-based classification
         search_context = state.get("search_context", [])
         context_preview = (
-            "\n".join(search_context[:3])[:500]
-            if search_context
-            else "No context yet"
+            "\n".join(search_context[:3])[:500] if search_context else "No context yet"
         )
 
         llm = _get_llm()

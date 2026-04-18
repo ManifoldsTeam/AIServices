@@ -359,7 +359,7 @@ class TestParallelMicroBatchGeneration:
         # Sizes should differ by at most 1
         assert abs(batch_a_size - batch_b_size) <= 1
         # Total should match original num_to_generate
-        assert total > 12  # > MICRO_BATCH_THRESHOLD (confirming split path)
+        assert total > 20  # > MICRO_BATCH_THRESHOLD (confirming split path)
 
     @pytest.mark.asyncio
     @patch(f"{MATH_AGENT_MOD}._generate_and_parse")
