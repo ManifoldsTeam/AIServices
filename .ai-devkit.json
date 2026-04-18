@@ -1,8 +1,8 @@
 {
   "version": "0.9.0",
   "environments": [
-    "github",
-    "antigravity"
+    "cursor",
+    "github"
   ],
   "initializedPhases": [
     "requirements",
@@ -14,5 +14,14 @@
     "monitoring"
   ],
   "createdAt": "2026-01-31T18:36:40.216Z",
-  "updatedAt": "2026-01-31T18:36:40.231Z"
+  "updatedAt": "2026-04-18T05:57:20.867Z",
+  "phases": [
+    "requirements",
+    "design",
+    "planning",
+    "implementation",
+    "testing",
+    "deployment",
+    "monitoring"
+  ]
 }
